@@ -51,3 +51,8 @@ ChangeLog
 *~
 .*.swp
 .*sw?
+
+node_modules
+.sass-cache/
+bower_components
+.tmp/

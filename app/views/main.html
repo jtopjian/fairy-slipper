@@ -1,0 +1,20 @@
+<div class="row marketing" ng-repeat="api in apis">
+  <div class="row operation-grp">
+    <div class="col-md-2 operation">
+      <a class="operation-anchor" href="#{{api.classpath}}">
+        <span class="glyphicon glyphicon-link"></span>
+      </a>
+      <span class="label label-success"
+            ng-repeat="method in api.conditions.method">
+        {{method}}
+      </span>
+    </div>
+    <div class="col-md-5">{{api.routepath}}</div>
+    <div ng-bind-html="api.doc"></div>
+    <!-- <div class="col-md-5"><strong id="{{api.classpath}}">Create image</strong>
+    </div> -->
+    <div class="col-md-1"><button class="btn btn-sm btn-detail btn-default" data-target="#detail-d562e242" data-toggle="collapse" id="detail-d562e242-btn">open</button></div>
+  </div>
+
+  
+</div>

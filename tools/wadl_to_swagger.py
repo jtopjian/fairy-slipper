@@ -6,29 +6,62 @@ import os
 from os import path
 import xml.sax
 import logging
+from copy import copy
 import json
 
 log = logging.getLogger(__file__)
 
 TYPE_MAP = {
+    'string': 'string',
     'xsd:string': 'string',
     'csapi:string': 'string',
     'xsd:int': 'integer',
     'csapi:uuid': 'string',
     'xsd:boolean': 'boolean',
+    'boolean': 'boolean',
+    'csapi:bool': 'boolean',
+    'xsd:bool': 'boolean',
+    'xsd:datetime': 'string',
+    'regexp': 'string',
     'xsd:datetime': 'string',
     'xsd:dict': 'object',
+    'alarm': 'string',
+    'xsd:timestamp': 'string',
+    'xsd:anyuri': 'string',
+    'csapi:serverforupdate': 'string',
     'string': 'string',
+    'imageapi:string': 'string',
+    'csapi:uuid': 'string',
+    'csapi:serverforcreate': 'string',
+    'csapi:blockdevicemapping': 'string',
+    'csapi:serverswithonlyidsnameslinks': 'string',
+    'csapi:serverstatus': 'string',
+    'csapi:dict': 'object',
+    'imageforcreate': 'string',
+    'xsd:ip': 'string',
+
+    # This needs to also set the items
+         # "tags": {
+         #    "type": "array",
+         #    "items": {
+         #        "type": "string"
+    'xsd:list': 'array',
+    'array': 'array',
 }
 
 FORMAT_MAP = {
+    'xsd:anyURI': 'uri',
+    'xsd:datetime': 'date-time',
+    'xsd:ip': 'ipv4',
+    'regexp': 'regexp',
+    'xsd:timestamp': 'timestamp',
 }
 
 STYLE_MAP = {
     'template': 'path',
     'plain': 'body',
     'query': 'query',
-
+    'header': 'header',
 }
 
 
@@ -39,7 +72,7 @@ def create_parameter(name, _in, description='',
         "in": STYLE_MAP[_in],
         "description": description,
         "required": True if required == 'true' else False,
-        "type": TYPE_MAP[type],
+        "type": TYPE_MAP[type.lower()],
         "format": FORMAT_MAP.get(type, ''),
     }
 
@@ -117,6 +150,9 @@ class ContentHandler(xml.sax.ContentHandler):
         self.content = None
         self.parser = None
 
+        # metadata
+        self.global_tags = []
+
     def detach_subparser(self, result):
         self.parser = None
         self.result_fn(result)
@@ -145,6 +181,12 @@ class ContentHandler(xml.sax.ContentHandler):
     def response_schema_description(self, content):
         status_code = self.attr_stack[-4]['status']
         self.current_api['responses'][status_code]['schema']['items'][-1]['description'] = content
+
+    def search_stack_for(self, tag_name):
+        for tag, attrs in zip(reversed(self.tag_stack),
+                              reversed(self.attr_stack)):
+            if tag == tag_name:
+                return attrs
 
     def on_top_tag_stack(self, *args):
         return self.tag_stack[-len(args):] == list(args)
@@ -189,6 +231,7 @@ class ContentHandler(xml.sax.ContentHandler):
                 else:
                     self.apis[url] = root_api = []
                 self.current_api = {
+                    'tags': copy(self.global_tags),
                     'method': name,
                     'produces': set(),
                     'consumes': set(),
@@ -207,14 +250,19 @@ class ContentHandler(xml.sax.ContentHandler):
             self.url.append(attrs.get('path')[
                 int(attrs.get('path').startswith('//')):])
         if self.tag_stack[-2:] == ['resource_type', 'method']:
-            self.resource_map[attrs.get('href').strip('#')] = self.attr_stack[-2]['id']
-        ## Methods and Resource Types
+            self.resource_map[attrs.get('href').strip('#')] \
+                = self.attr_stack[-2]['id']
+
+        # Methods and Resource Types
+        if self.on_top_tag_stack('application', 'resource'):
+            self.global_tags.append(attrs['id'])
         if name == 'resource' and attrs.get('type'):
-            self.resource_types[attrs.get('type').strip('#')] = '/'.join(self.url)
-        if self.tag_stack[-2:] == ['resource', 'method']:
+            self.resource_types[attrs.get('type').strip('#')] \
+                = '/'.join(self.url)
+        if self.on_top_tag_stack('resource', 'method'):
             self.url_map[attrs.get('href').strip('#')] = '/'.join(self.url)
 
-        if self.tag_stack[-2:] == ['method', 'wadl:doc']:
+        if self.on_top_tag_stack('method', 'wadl:doc'):
             self.current_api['title'] = attrs.get('title')
         if name == 'xsdxt:code':
             if not attrs.get('href'):
@@ -223,7 +271,7 @@ class ContentHandler(xml.sax.ContentHandler):
                 type = 'request'
             else:
                 type = 'response'
-                status_code = self.attr_stack[-4]['status']
+                status_code = self.search_stack_for('response')['status']
             media_type = self.attr_stack[-3]['mediaType']
             os.chdir(path.dirname(self.filename))
             sample = open(attrs['href']).read()
@@ -233,34 +281,43 @@ class ContentHandler(xml.sax.ContentHandler):
             self.current_api['produces'].add(media_type)
             self.current_api['consumes'].add(media_type)
             if type == 'response':
-                self.current_api['responses'][status_code] = response = {}
+                response = self.current_api['responses'][status_code]
                 if 'examples' not in response:
                     response['examples'] = {}
                 response['examples'][media_type] = sample
 
-        if self.tag_stack[-3:] == ['request', 'representation', 'param']:
+        if name == 'response':
+            if 'status' not in attrs:
+                return
+            status_code = attrs['status']
+            self.current_api['responses'][status_code] = {}
+
+        if self.on_top_tag_stack('request', 'representation', 'param'):
             name = attrs['name']
             self.current_api['parameters'].append(
                 create_parameter(
                     name=name,
                     _in=attrs['style'],
                     description='',
-                    type=attrs['type'],
-                    required=attrs['required']))
-        if self.tag_stack[-3:] == ['response', 'representation', 'param']:
+                    type=attrs.get('type', 'string'),
+                    required=attrs.get('required')))
+        if self.on_top_tag_stack('response', 'representation', 'param'):
             status_code = self.attr_stack[-3]['status']
             name = attrs['name']
-            if 'schema' not in self.current_api['responses'][status_code]:
-                self.current_api['responses'][status_code]['schema'] = {
-                    'items': [],
-                }
+            try:
+                if 'schema' not in self.current_api['responses'][status_code]:
+                    self.current_api['responses'][status_code]['schema'] = {
+                        'items': [],
+                    }
+            except:
+                import pdb; pdb.set_trace()  # FIXME
             self.current_api['responses'][status_code]['schema']['items'].append(
                 create_parameter(
                     name=name,
                     _in=attrs['style'],
                     description='',
                     type=attrs['type'],
-                    required=attrs['required']))
+                    required=attrs.get('required')))
 
     def endElement(self, name):
         if self.parser:
@@ -303,7 +360,7 @@ class ContentHandler(xml.sax.ContentHandler):
         pass
 
 
-def main(source_file, output_dir):
+def main(source_file, output_dir, service_name):
     ch = ContentHandler(source_file)
     xml.sax.parse(source_file, ch)
     os.chdir(output_dir)
@@ -320,7 +377,7 @@ def main(source_file, output_dir):
         u'externalDocs': {},
         u"swagger": u"2.0",
     }
-    with open('swagger.json', 'w') as out_file:
+    with open('%s-swagger.json' % service_name, 'w') as out_file:
         json.dump(output, out_file, indent=2, sort_keys=True)
 
 
@@ -355,8 +412,9 @@ if '__main__' == __name__:
     head = True
     while head:
         head, tail = path.split(reducing_path)
-        if tail == 'src':
+        if tail == 'src' or tail == 'xsd':
             os.chdir(head)
             break
         reducing_path = head
-    main(filename, output_dir=current_dir)
+    service = path.split(path.split(reducing_path)[0])[1]
+    main(filename, output_dir=current_dir, service_name=service)

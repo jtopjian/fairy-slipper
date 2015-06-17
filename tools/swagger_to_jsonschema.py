@@ -30,12 +30,14 @@ def main(filename):
                     if '_in' in item:
                         del item['_in']
 
-
                 file = open(''.join([uri.replace('/', '_'),
-                                     str(i), 'request.json']), 'w')
+                                     '-',
+                                     str(i),
+                                     '-request-schema.json']), 'w')
                 json.dump({'type': 'object',
                            'properties': schema},
-                          file)
+                          file,
+                          indent=2)
 
 
 if '__main__' == __name__:

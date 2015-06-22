@@ -36,6 +36,7 @@ TYPE_MAP = {
     'xsd:enum': 'string',
     'xsd:anyuri': 'string',
     'csapi:serverforupdate': 'string',
+    'capi:uuid': 'string',
     'string': 'string',
     'imageapi:string': 'string',
     'imageapi:imagestatus': 'string',
@@ -285,11 +286,13 @@ class ContentHandler(xml.sax.ContentHandler):
         if name == 'xsdxt:code':
             if not attrs.get('href'):
                 return
-            if self.tag_stack[-4] == 'request':
-                type = 'request'
-            else:
+            if self.search_stack_for('response') is not None:
                 type = 'response'
                 status_code = self.search_stack_for('response')['status']
+            elif self.search_stack_for('request') is not None:
+                type = 'request'
+            else:
+                raise Exception("Can't find request or response tag.")
             media_type = MIME_MAP[attrs['href'].rsplit('.', 1)[-1]]
 
             pathname = path.join(path.dirname(self.filename), attrs['href'])

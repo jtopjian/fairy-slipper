@@ -19,6 +19,7 @@ TYPE_MAP = {
     'csapi:uuid': 'string',
     'xsd:boolean': 'boolean',
     'boolean': 'boolean',
+    'object': 'object',
     'csapi:bool': 'boolean',
     'xsd:bool': 'boolean',
     'xsd:datetime': 'string',
@@ -27,10 +28,18 @@ TYPE_MAP = {
     'xsd:dict': 'object',
     'alarm': 'string',
     'xsd:timestamp': 'string',
+    'xsd:char': 'string',
+    'list': 'array',
+    'csapi:flavorswithonlyidsnameslinks': 'string',
+    'csapi:imagestatus': 'string',
+    'csapi:imageswithonlyidsnameslinks': 'string',
+    'xsd:enum': 'string',
     'xsd:anyuri': 'string',
     'csapi:serverforupdate': 'string',
     'string': 'string',
     'imageapi:string': 'string',
+    'imageapi:imagestatus': 'string',
+    'imageapi:uuid': 'string',
     'csapi:uuid': 'string',
     'csapi:serverforcreate': 'string',
     'csapi:blockdevicemapping': 'string',
@@ -40,7 +49,7 @@ TYPE_MAP = {
     'imageforcreate': 'string',
     'xsd:ip': 'string',
 
-    # This needs to also set the items
+    # TODO This array types also set the items
          # "tags": {
          #    "type": "array",
          #    "items": {
@@ -62,6 +71,12 @@ STYLE_MAP = {
     'plain': 'body',
     'query': 'query',
     'header': 'header',
+}
+
+MIME_MAP = {
+    'json': 'application/json',
+    'txt': 'text/plain',
+    'xml': 'application/xml',
 }
 
 
@@ -151,6 +166,7 @@ class ContentHandler(xml.sax.ContentHandler):
         self.parser = None
 
         # metadata
+        self.info = {}
         self.global_tags = []
 
     def detach_subparser(self, result):
@@ -244,11 +260,13 @@ class ContentHandler(xml.sax.ContentHandler):
                     if ('{%s}' % param) in url:
                         self.current_api['parameters'].append(
                             create_parameter(param, 'template', doc))
-
+        # Info
+        if name == 'resources':
+            self.info['section'] = attrs['xml:id']
         # URL paths
         if name == 'resource':
-            self.url.append(attrs.get('path')[
-                int(attrs.get('path').startswith('//')):])
+            self.url.append(attrs.get('path', '/')[
+                int(attrs.get('path', '/').startswith('//')):])
         if self.tag_stack[-2:] == ['resource_type', 'method']:
             self.resource_map[attrs.get('href').strip('#')] \
                 = self.attr_stack[-2]['id']
@@ -272,15 +290,20 @@ class ContentHandler(xml.sax.ContentHandler):
             else:
                 type = 'response'
                 status_code = self.search_stack_for('response')['status']
-            media_type = self.attr_stack[-3]['mediaType']
-            os.chdir(path.dirname(self.filename))
-            sample = open(attrs['href']).read()
-            if media_type == 'application/json':
-                sample = json.loads(sample)
+            media_type = MIME_MAP[attrs['href'].rsplit('.', 1)[-1]]
+
+            pathname = path.join(path.dirname(self.filename), attrs['href'])
+            try:
+                sample = open(pathname).read()
+                if media_type == 'application/json':
+                    sample = json.loads(sample)
+            except IOError:
+                log.warning("Can't find file %s" % pathname)
+                sample = None
 
             self.current_api['produces'].add(media_type)
             self.current_api['consumes'].add(media_type)
-            if type == 'response':
+            if sample and type == 'response':
                 response = self.current_api['responses'][status_code]
                 if 'examples' not in response:
                     response['examples'] = {}
@@ -297,26 +320,23 @@ class ContentHandler(xml.sax.ContentHandler):
             self.current_api['parameters'].append(
                 create_parameter(
                     name=name,
-                    _in=attrs['style'],
+                    _in=attrs.get('style', 'plain'),
                     description='',
                     type=attrs.get('type', 'string'),
                     required=attrs.get('required')))
         if self.on_top_tag_stack('response', 'representation', 'param'):
             status_code = self.attr_stack[-3]['status']
             name = attrs['name']
-            try:
-                if 'schema' not in self.current_api['responses'][status_code]:
-                    self.current_api['responses'][status_code]['schema'] = {
-                        'items': [],
-                    }
-            except:
-                import pdb; pdb.set_trace()  # FIXME
+            if 'schema' not in self.current_api['responses'][status_code]:
+                self.current_api['responses'][status_code]['schema'] = {
+                    'items': [],
+                }
             self.current_api['responses'][status_code]['schema']['items'].append(
                 create_parameter(
                     name=name,
-                    _in=attrs['style'],
+                    _in=attrs.get('style', 'plain'),
                     description='',
-                    type=attrs['type'],
+                    type=attrs.get('type', 'string'),
                     required=attrs.get('required')))
 
     def endElement(self, name):
@@ -361,11 +381,12 @@ class ContentHandler(xml.sax.ContentHandler):
 
 
 def main(source_file, output_dir, service_name):
+    log.info('Parsing %s' % source_file)
     ch = ContentHandler(source_file)
     xml.sax.parse(source_file, ch)
     os.chdir(output_dir)
     output = {
-        u'info': {},
+        u'info': ch.info,
         u'paths': ch.apis,
         u'schemes': {},
         u'tags': {},
@@ -377,7 +398,8 @@ def main(source_file, output_dir, service_name):
         u'externalDocs': {},
         u"swagger": u"2.0",
     }
-    with open('%s-swagger.json' % service_name, 'w') as out_file:
+    pathname = '%s-%s-swagger.json' % (service_name, ch.info['section'])
+    with open(pathname, 'w') as out_file:
         json.dump(output, out_file, indent=2, sort_keys=True)
 
 

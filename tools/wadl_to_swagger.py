@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import os
+import re
 from os import path
 import xml.sax
 import logging
@@ -79,6 +80,8 @@ MIME_MAP = {
     'txt': 'text/plain',
     'xml': 'application/xml',
 }
+
+VERSION_RE = re.compile('v[0-9\.]+')
 
 
 def create_parameter(name, _in, description='',
@@ -241,7 +244,8 @@ class ContentHandler(xml.sax.ContentHandler):
                     resource = self.resource_map[id]
                     url = self.resource_types[resource]
                 else:
-                    raise Exception("Can't find method.")
+                    log.warning("Can't find method %s", id)
+                    return
                 name = attrs['name'].lower()
                 if url in self.apis:
                     root_api = self.apis[url]
@@ -263,11 +267,13 @@ class ContentHandler(xml.sax.ContentHandler):
                             create_parameter(param, 'template', doc))
         # Info
         if name == 'resources':
-            self.info['section'] = attrs['xml:id']
+            section, api_version = attrs['xml:id'].rsplit('-', 1)
+            assert VERSION_RE.match(api_version)
+            self.info['section'] = section
+            self.info['version'] = api_version
         # URL paths
         if name == 'resource':
-            self.url.append(attrs.get('path', '/')[
-                int(attrs.get('path', '/').startswith('//')):])
+            self.url.append(attrs.get('path', '/').replace('//', '/'))
         if self.tag_stack[-2:] == ['resource_type', 'method']:
             self.resource_map[attrs.get('href').strip('#')] \
                 = self.attr_stack[-2]['id']
@@ -292,6 +298,8 @@ class ContentHandler(xml.sax.ContentHandler):
             elif self.search_stack_for('request') is not None:
                 type = 'request'
             else:
+                log.error("Can't find request or response tag. %s",
+                          self.tag_stack)
                 raise Exception("Can't find request or response tag.")
             media_type = MIME_MAP[attrs['href'].rsplit('.', 1)[-1]]
 
@@ -401,7 +409,9 @@ def main(source_file, output_dir, service_name):
         u'externalDocs': {},
         u"swagger": u"2.0",
     }
-    pathname = '%s-%s-swagger.json' % (service_name, ch.info['section'])
+    pathname = '%s-%s-%s-swagger.json' % (service_name,
+                                       ch.info['version'],
+                                       ch.info['section'])
     with open(pathname, 'w') as out_file:
         json.dump(output, out_file, indent=2, sort_keys=True)
 

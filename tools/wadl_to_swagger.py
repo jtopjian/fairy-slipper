@@ -409,9 +409,10 @@ def main(source_file, output_dir, service_name):
         u'externalDocs': {},
         u"swagger": u"2.0",
     }
+    ch.info['service_name'] = service_name
     pathname = '%s-%s-%s-swagger.json' % (service_name,
-                                       ch.info['version'],
-                                       ch.info['section'])
+                                          ch.info['version'],
+                                          ch.info['section'])
     with open(pathname, 'w') as out_file:
         json.dump(output, out_file, indent=2, sort_keys=True)
 

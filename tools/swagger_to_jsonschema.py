@@ -2,26 +2,41 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
+from copy import copy
 from os import path
+import urllib
 import logging
 import json
 
 log = logging.getLogger(__file__)
 
 
-def main(filename):
-    swagger = json.load(open(filename))
+def main(swagger_filename):
+    log.info("Processing file %s", swagger_filename)
+    swagger = json.load(open(swagger_filename))
+    info = swagger['info']
+    service_name = info['service_name']
+    section = info['section']
+    version = info['version']
     for uri, info in swagger['paths'].items():
-        for endpoint in info:
-            for i, response in enumerate(endpoint['responses'].items()):
+        for i, endpoint in enumerate(info):
+            for response in endpoint['responses'].items():
                 status_code, resp_info = response
 
                 if 'parameters' not in endpoint:
                     continue
 
-                schema = {parameter['name']: parameter
-                          for parameter in endpoint['parameters']
-                          if parameter['in'] == 'body'}
+                # Skip any status codes above the 200s without any
+                # return value.
+                if int(status_code.split()[0]) >= 300 and not resp_info:
+                    continue
+
+                try:
+                    schema = {parameter['name']: copy(parameter)
+                              for parameter in endpoint['parameters']
+                              if parameter['in'] == 'body'}
+                except Exception:
+                    import pdb; pdb.set_trace()  # FIXME
                 if not schema:
                     continue
 
@@ -29,11 +44,19 @@ def main(filename):
                     del item['name']
                     if '_in' in item:
                         del item['_in']
-
-                file = open(''.join([uri.replace('/', '_'),
-                                     '-',
+                filename = ''.join([service_name, '-',
+                                    version, '-',
+                                    section, '-',
+                                    'schema-request-',
+                                    urllib.quote(uri, ''),
+                                    '-',
                                      str(i),
-                                     '-request-schema.json']), 'w')
+                                    '.json'])
+                if path.exists(filename):
+                    import pdb; pdb.set_trace()  # FIXME
+
+                assert not path.exists(filename), "Filename %s exists" % filename
+                file = open(filename, 'w')
                 json.dump({'type': 'object',
                            'properties': schema},
                           file,

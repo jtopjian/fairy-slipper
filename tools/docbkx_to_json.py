@@ -246,28 +246,6 @@ SECTIONS = {u'API_Versions': u'API-Versions',
             u'vpnaas-v2.0': u'vpnaas'}
 
 
-
-
-SECTION = SECTIONS
-for key in SECTION.keys():
-    SECTION[key] = SECTION[key].replace('_', '-')
-
-for key in SECTION.keys():
-    if SECTION[key].endswith('-ext'):
-        SECTION[key] = SECTION[key].rsplit('-', 1)[0]
-    if SECTION[key].endswith('-v2'):
-        SECTION[key] = SECTION[key].rsplit('-', 1)[0]
-    if SECTION[key].endswith('-v2.1'):
-        SECTION[key] = SECTION[key].rsplit('-', 1)[0]
-    if SECTION[key].endswith('-v1.0'):
-        SECTION[key] = SECTION[key].rsplit('-', 1)[0]
-    if SECTION[key].endswith('-v2.0'):
-        SECTION[key] = SECTION[key].rsplit('-', 1)[0]
-    if SECTION[key].endswith('-v3'):
-        SECTION[key] = SECTION[key].rsplit('-', 1)[0]
-    if SECTION[key].startswith('os-'):
-        SECTION[key] = SECTION[key].split('-', 1)[1]
-
 VERSION_RE = re.compile('v[0-9\.]+')
 
 
@@ -356,7 +334,7 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
             self.content = []
 
         if self.on_top_tag_stack('chapter', 'title'):
-            self.api_parser.content = content.strip()
+            self.api_parser.title = content.strip()
             self.content = []
 
         if self.on_top_tag_stack('chapter', 'section'):
@@ -470,6 +448,7 @@ def main(source_file, output_dir):
     xml.sax.parse(source_file, ch)
     os.chdir(output_dir)
     output = {
+        'title': ch.title,
         'service': ch.service,
         'version': ch.version,
         'tags': ch.tags,

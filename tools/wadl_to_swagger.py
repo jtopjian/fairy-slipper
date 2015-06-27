@@ -404,25 +404,6 @@ class ContentHandler(xml.sax.ContentHandler):
         if content:
             self.content.append(content)
 
-    def processingInstruction(self, target, data):
-        print(target)
-        pass
-
-    def ignorableWhitespace(self, whitespace):
-        pass
-
-    def skippedEntity(self, name):
-        pass
-
-    def startPrefixMapping(self, prefix, uri):
-        pass
-
-    def endPrefixMapping(self, prefix):
-        pass
-
-    def setDocumentLocator(self, locator):
-        pass
-
 
 def main(source_file, output_dir):
     log.info('Reading API description from %s' % source_file)

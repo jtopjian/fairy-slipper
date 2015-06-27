@@ -270,19 +270,6 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
         self.attr_stack = []
         self.content = []
         self.current_emphasis = None
-        self.parser = None
-
-    def detach_subparser(self, result):
-        self.parser = None
-        self.result_fn(result)
-        self.result_fn = None
-
-    def attach_subparser(self, parser, result_fn):
-        self.parser = parser
-        self.result_fn = result_fn
-
-    def endDocument(self):
-        pass
 
     def search_stack_for(self, tag_name):
         for tag, attrs in zip(reversed(self.tag_stack),
@@ -295,13 +282,6 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
 
     def startElement(self, name, _attrs):
         attrs = dict(_attrs)
-        # if name == 'section':
-        #     if self.on_top_tag_stack('resource', 'param'):
-        #         self.attach_subparser(ParaParser(self),
-        #                               self.parameter_description)
-
-        if self.parser:
-            return self.parser.startElement(name, _attrs)
 
         self.tag_stack.append(name)
         self.attr_stack.append(attrs)
@@ -324,9 +304,6 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
             fn(dict(_attrs))
 
     def endElement(self, name):
-        if self.parser:
-            return self.parser.endElement(name)
-
         content = ''.join(self.content)
 
         if self.on_top_tag_stack('chapter', 'section', 'title'):
@@ -349,9 +326,6 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
             fn()
 
     def characters(self, content):
-        if self.parser:
-            return self.parser.characters(content)
-
         if not content:
             return
         if content[0] == '\n':

@@ -119,15 +119,22 @@ class SubParser(object):
 
 
 class ParaParser(SubParser):
+
+    EMPHASIS = {
+        'bold': '**',
+        'italic': '*'
+    }
+
     def __init__(self, parent):
         super(ParaParser, self).__init__(parent)
         self.content = []
+        self.current_emphasis = None
 
     def startElement(self, name, _attrs):
         super(ParaParser, self).startElement(name, _attrs)
         fn = getattr(self, 'visit_%s' % name, None)
         if fn:
-            fn()
+            fn(dict(_attrs))
 
     def endElement(self, name):
         content = ''.join(self.content)
@@ -137,17 +144,26 @@ class ParaParser(SubParser):
         if fn:
             fn()
 
-    def visit_listitem(self):
+    def visit_listitem(self, attrs):
         self.content.append('\n- ')
 
     def depart_para(self):
         self.content.append('\n')
 
-    def visit_code(self):
-        self.content.append('`')
+    def visit_code(self, attrs):
+        self.content.append('``')
 
     def depart_code(self):
-        self.content.append('`')
+        self.content.append('``')
+
+    def visit_emphasis(self, attrs):
+        # Bold is the default emphasis
+        self.current_emphasis = attrs.get('role', 'bold')
+        self.content.append(self.EMPHASIS[self.current_emphasis])
+
+    def depart_emphasis(self):
+        self.content.append(self.EMPHASIS[self.current_emphasis])
+        self.current_emphasis = None
 
     def characters(self, content):
         if not content:

@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import os
+from collections import defaultdict
 import re
 from os import path
 import xml.sax
@@ -177,8 +178,13 @@ class ParaParser(SubParser):
 
 class ContentHandler(xml.sax.ContentHandler):
 
-    def __init__(self, filename):
+    def __init__(self, filename, api_ref):
         self.filename = filename
+        self.api_ref = api_ref
+        abs_filename = path.abspath(self.filename)
+        self.tag_map = {method.split('#', 1)[1]: tag
+                        for method, tag in self.api_ref['paths'].items()
+                        if method.split('#', 1)[0] == abs_filename}
 
     def startDocument(self):
         # API state
@@ -201,7 +207,6 @@ class ContentHandler(xml.sax.ContentHandler):
         self.parser = None
 
         # metadata
-        self.info = {}
         self.global_tags = []
 
     def detach_subparser(self, result):
@@ -277,6 +282,7 @@ class ContentHandler(xml.sax.ContentHandler):
                 else:
                     log.warning("Can't find method %s", id)
                     return
+                tag = self.tag_map.get(id, '')
                 name = attrs['name'].lower()
                 if url in self.apis:
                     root_api = self.apis[url]
@@ -290,18 +296,16 @@ class ContentHandler(xml.sax.ContentHandler):
                     'parameters': [],
                     'responses': {},
                 }
-                root_api.append(self.current_api)
+                if tag:
+                    self.current_api['tags'].append(tag)
+                    root_api.append(self.current_api)
+                else:
+                    log.warning("Can't find method %s" % id)
 
                 for param, doc in self.url_params.items():
                     if ('{%s}' % param) in url:
                         self.current_api['parameters'].append(
                             create_parameter(param, 'template', doc))
-        # Info
-        if name == 'resources':
-            section, api_version = attrs['xml:id'].rsplit('-', 1)
-            assert VERSION_RE.match(api_version)
-            self.info['section'] = section
-            self.info['version'] = api_version
         # URL paths
         if name == 'resource':
             self.url.append(attrs.get('path', '/').replace('//', '/'))
@@ -420,28 +424,38 @@ class ContentHandler(xml.sax.ContentHandler):
         pass
 
 
-def main(source_file, output_dir, service_name):
-    log.info('Parsing %s' % source_file)
-    ch = ContentHandler(source_file)
-    xml.sax.parse(source_file, ch)
-    os.chdir(output_dir)
+def main(source_file, output_dir):
+    log.info('Reading API description from %s' % source_file)
+    api_ref = json.load(open(source_file))
+    files = set([path.split('#', 1)[0]
+                 for path in api_ref['paths'].keys()])
+
     output = {
-        u'info': ch.info,
-        u'paths': ch.apis,
+        u'info': {'version': api_ref['version'],
+                  'title': api_ref['title'],
+                  'license': {
+                      "name": "Apache 2.0",
+                      "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+                  }},
+        u'paths': defaultdict(list),
         u'schemes': {},
-        u'tags': {},
+        u'tags': api_ref['tags'],
         u'basePath': {},
         u'securityDefinitions': {},
         u'host': {},
         u'definitions': {},
-        u'swagger': {},
         u'externalDocs': {},
         u"swagger": u"2.0",
     }
-    ch.info['service_name'] = service_name
-    pathname = '%s-%s-%s-swagger.json' % (service_name,
-                                          ch.info['version'],
-                                          ch.info['section'])
+    for file in files:
+        log.info('Parsing %s' % file)
+        ch = ContentHandler(file, api_ref)
+        xml.sax.parse(file, ch)
+        for path, apis in ch.apis.items():
+            output['paths'][path].extend(apis)
+    os.chdir(output_dir)
+    pathname = '%s-%s-swagger.json' % (api_ref['service'],
+                                       api_ref['version'])
     with open(pathname, 'w') as out_file:
         json.dump(output, out_file, indent=2, sort_keys=True)
 
@@ -473,13 +487,4 @@ if '__main__' == __name__:
     filename = path.abspath(args.filename)
 
     current_dir = os.getcwd()
-    reducing_path = filename
-    head = True
-    while head:
-        head, tail = path.split(reducing_path)
-        if tail == 'src' or tail == 'xsd':
-            os.chdir(head)
-            break
-        reducing_path = head
-    service = path.split(path.split(reducing_path)[0])[1]
-    main(filename, output_dir=current_dir, service_name=service)
+    main(filename, output_dir=current_dir)

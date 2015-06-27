@@ -125,11 +125,29 @@ class ParaParser(SubParser):
 
     def startElement(self, name, _attrs):
         super(ParaParser, self).startElement(name, _attrs)
+        fn = getattr(self, 'visit_%s' % name, None)
+        if fn:
+            fn()
 
     def endElement(self, name):
         content = ''.join(self.content)
         self.result = content
         super(ParaParser, self).endElement(name)
+        fn = getattr(self, 'depart_%s' % name, None)
+        if fn:
+            fn()
+
+    def visit_listitem(self):
+        self.content.append('\n- ')
+
+    def depart_para(self):
+        self.content.append('\n')
+
+    def visit_code(self):
+        self.content.append('`')
+
+    def depart_code(self):
+        self.content.append('`')
 
     def characters(self, content):
         if not content:
@@ -138,10 +156,7 @@ class ParaParser(SubParser):
             return
         if content[0] == ' ':
             content = ' ' + content.lstrip()
-        if self.tag_stack[-1] == 'code':
-            self.content.append('`' + content + '`')
-        else:
-            self.content.append(content)
+        self.content.append(content)
 
 
 class ContentHandler(xml.sax.ContentHandler):

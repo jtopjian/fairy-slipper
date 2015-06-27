@@ -189,18 +189,18 @@ class ContentHandler(xml.sax.ContentHandler):
                 method['produces'] = list(method['produces'])
 
     def parameter_description(self, content):
-        name = self.attr_stack[-2]['name']
-        self.url_params[name] = content
+        name = self.search_stack_for('param')['name']
+        self.url_params[name] = content.strip()
 
     def api_summary(self, content):
-        self.current_api['summary'] = content
+        self.current_api['description'] = content.strip()
 
     def request_parameter_description(self, content):
-        self.current_api['parameters'][-1]['description'] = content
+        self.current_api['parameters'][-1]['description'] = content.strip()
 
     def response_schema_description(self, content):
-        status_code = self.attr_stack[-4]['status']
-        self.current_api['responses'][status_code]['schema']['items'][-1]['description'] = content
+        status_code = self.search_stack_for('response')['status']
+        self.current_api['responses'][status_code]['schema']['items'][-1]['description'] = content.strip()
 
     def search_stack_for(self, tag_name):
         for tag, attrs in zip(reversed(self.tag_stack),
@@ -212,26 +212,26 @@ class ContentHandler(xml.sax.ContentHandler):
         return self.tag_stack[-len(args):] == list(args)
 
     def startElement(self, name, _attrs):
-        if name == 'para':
-            if self.on_top_tag_stack('resource', 'param', 'wadl:doc'):
+        attrs = dict(_attrs)
+        if name == 'wadl:doc':
+            if self.on_top_tag_stack('resource', 'param'):
                 self.attach_subparser(ParaParser(self),
                                       self.parameter_description)
-            if self.on_top_tag_stack('method', 'wadl:doc'):
+            if self.on_top_tag_stack('method'):
+                self.current_api['summary'] = attrs.get('title')
                 self.attach_subparser(ParaParser(self), self.api_summary)
 
             if self.on_top_tag_stack('request', 'representation',
-                                     'param', 'wadl:doc'):
+                                     'param'):
                 self.attach_subparser(ParaParser(self),
                                       self.request_parameter_description)
-            if self.on_top_tag_stack('response', 'representation', 'param',
-                                     'wadl:doc'):
+            if self.on_top_tag_stack('response', 'representation', 'param'):
                 self.attach_subparser(ParaParser(self),
                                       self.response_schema_description)
 
         if self.parser:
             return self.parser.startElement(name, _attrs)
 
-        attrs = dict(_attrs)
         self.tag_stack.append(name)
         self.attr_stack.append(attrs)
         self.content = []
@@ -287,8 +287,6 @@ class ContentHandler(xml.sax.ContentHandler):
         if self.on_top_tag_stack('resource', 'method'):
             self.url_map[attrs.get('href').strip('#')] = '/'.join(self.url)
 
-        if self.on_top_tag_stack('method', 'wadl:doc'):
-            self.current_api['title'] = attrs.get('title')
         if name == 'xsdxt:code':
             if not attrs.get('href'):
                 return

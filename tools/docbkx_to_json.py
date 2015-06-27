@@ -287,6 +287,7 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
         self.attr_stack.append(attrs)
 
         if self.on_top_tag_stack('chapter', 'section'):
+            self.content = []
             id = attrs['xml:id']
             id = SECTIONS.get(id, id)
             self.current_tag = {'name': id}

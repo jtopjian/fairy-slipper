@@ -287,6 +287,14 @@ class ContentHandler(xml.sax.ContentHandler):
                     url = self.resource_types[resource]
                 else:
                     log.warning("Can't find method %s", id)
+                    # Create the minimal object to prevent creating
+                    # exceptions for this case everywhere.
+                    self.current_api = {
+                        'produces': set(),
+                        'consumes': set(),
+                        'responses': {},
+                        'parameters': {},
+                    }
                     return
                 tag = self.tag_map.get(id, '')
                 name = attrs['name'].lower()
@@ -431,10 +439,11 @@ class ContentHandler(xml.sax.ContentHandler):
             # Clean up the parameters of methods that have take no
             # body content.
             parameters = self.current_api['parameters']
-            schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
-            if schema_name not in self.schemas:
-                self.current_api['parameters'] \
-                    = self.current_api['parameters'][1:]
+            if parameters and 'schema' in parameters[0]:
+                schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
+                if schema_name not in self.schemas:
+                    self.current_api['parameters'] \
+                        = self.current_api['parameters'][1:]
         # URL paths
         if name == 'resource':
             self.url.pop()

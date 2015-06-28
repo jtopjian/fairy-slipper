@@ -2,9 +2,12 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import os
 from os import path
 import logging
 import json
+import codecs
+import textwrap
 
 from jinja2 import Template
 
@@ -12,17 +15,15 @@ log = logging.getLogger(__file__)
 
 TMPL_TXT = """
 {% for path, requests in swagger['paths'].items() -%}
-{% for method, attributes in requests.items() -%}
-{% for status_code, attributes in requests.items() -%}
+{% for request in requests -%}
 
+{{request.summary}}
+{{ "=" * request.summary|length }}
 
-{{attributes.title}}
-{{ "=" * attributes.title|length }}
+.. http:{{request.method}}:: {{path}}
 
-.. http:{{method}}:: {{path}}
-
-   {{attributes.summary}}
-{% for parameter in attributes.parameters -%}
+{{wrap(request.description)}}
+{% for parameter in request.parameters -%}
 {% if parameter.in == 'path' %}
    :parameter {{parameter.name}}: {{parameter.description}}
 {%- elif parameter.in == 'query' %}
@@ -32,14 +33,34 @@ TMPL_TXT = """
 
 {% endfor -%}
 {% endfor -%}
-{% endfor -%}
 """
 TMPL = Template(TMPL_TXT)
 
 
-def main(filename):
+def wrapper(string):
+    wrap = textwrap.TextWrapper(initial_indent='   ',
+                                subsequent_indent='   ')
+    bullet_wrap = textwrap.TextWrapper(initial_indent='   - ',
+                                       subsequent_indent='     ')
+    new_text = []
+    for line in string.split('\n'):
+        if line.startswith('-'):
+            new_text.extend(bullet_wrap.wrap(line[1:].strip()))
+        else:
+            new_text.append('')  # newline here, because magic
+            new_text.extend(wrap.wrap(line.strip()))
+
+    return '\n'.join(new_text)
+
+
+def main(filename, output_dir):
+    log.info('Parsing %s' % filename)
     swagger = json.load(open(filename))
-    print(TMPL.render(swagger=swagger))
+    output_file = path.basename(filename).rsplit('.', 1)[0] + '.rst'
+    result = TMPL.render(swagger=swagger, wrap=wrapper)
+    with codecs.open(path.join(output_dir, output_file),
+                     'w', "utf-8") as out_file:
+        out_file.write(result)
 
 
 if '__main__' == __name__:
@@ -68,4 +89,5 @@ if '__main__' == __name__:
 
     filename = path.abspath(args.filename)
 
-    main(filename)
+    current_dir = os.getcwd()
+    main(filename, output_dir=current_dir)

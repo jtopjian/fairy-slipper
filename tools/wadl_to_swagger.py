@@ -327,7 +327,7 @@ class ContentHandler(xml.sax.ContentHandler):
                         r_tag_id = self.resource_tag_map.get(tag_id)
                         if r_tag_id not in self.actual_tags:
                             continue
-                        self.current_api['tags'].add(tag_id)
+                        self.current_api['tags'].add(r_tag_id)
                 if tag:
                     self.current_api['tags'].add(tag)
                 if self.file_tag:

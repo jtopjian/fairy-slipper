@@ -27,6 +27,8 @@ API-doc/<service>/<version>-schemas/.json
 Other Swagger UIs
 -----------------
 
+Taken from https://github.com/swagger-api/swagger-spec/wiki/Sites-and-Services
+
 - http://docs.apimatic.apiary.io/
 - http://docs.api2cart.com/post/interactive-docs
 - http://chat.banckle.com/api/v3.0/

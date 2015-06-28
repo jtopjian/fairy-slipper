@@ -13,3 +13,29 @@ Features
 --------
 
 * TODO
+
+
+Directory Structure (Future)
+----------------------------
+
+
+api-doc/ -- the root of the documentation
+api-doc/index.json  -- the index file that lists all the files that are included in the API doc.
+API-doc/<service>/<version>.rst
+API-doc/<service>/<version>-schemas/.json
+
+Other Swagger UIs
+-----------------
+
+- http://docs.apimatic.apiary.io/
+- http://docs.api2cart.com/post/interactive-docs
+- http://chat.banckle.com/api/v3.0/
+- http://www.evercam.io/develop/docs
+- https://api.elastic.io/docs/
+- https://developer.concur.com/
+- https://www.callfire.com/api-documentation/rest/version/1.1
+- https://www.bitmex.com/api/explorer/
+- https://bitdango.com/api
+- https://api.groupdocs.com/v2.0/spec/
+- http://developer.wordnik.com/docs.html
+- https://api.sensr.net/doc/v3/index.html

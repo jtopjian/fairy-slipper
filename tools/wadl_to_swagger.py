@@ -322,16 +322,18 @@ class ContentHandler(xml.sax.ContentHandler):
                                     }}],
                     'responses': {},
                 }
-                if id in self.resource_ids:
-                    for tag_id in self.resource_ids[id]:
+                if tag:
+                    self.current_api['tags'].add(tag)
+                elif id in self.resource_ids:
+                    for tag_id in reversed(self.resource_ids[id]):
                         r_tag_id = self.resource_tag_map.get(tag_id)
                         if r_tag_id not in self.actual_tags:
                             continue
                         self.current_api['tags'].add(r_tag_id)
-                if tag:
-                    self.current_api['tags'].add(tag)
-                if self.file_tag:
-                    self.current_api['tags'].add(self.file_tag)
+                        break
+                else:
+                    if self.file_tag:
+                        self.current_api['tags'].add(self.file_tag)
                 self.current_api['tags'] = list(self.current_api['tags'])
                 # If there are no tags then we couldn't find the
                 # method in the chapters.

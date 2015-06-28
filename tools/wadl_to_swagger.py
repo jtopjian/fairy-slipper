@@ -190,6 +190,7 @@ class ContentHandler(xml.sax.ContentHandler):
         # API state
         self.apis = {}
         self.current_api = None
+        self.schemas = {}
 
         # Resource Mapping
         self.resource_map = {}
@@ -236,6 +237,11 @@ class ContentHandler(xml.sax.ContentHandler):
 
     def response_schema_description(self, content):
         status_code = self.search_stack_for('response')['status']
+        if ' ' in status_code:
+            status_codes = status_code.split(' ')
+            if '200' in status_codes:
+                status_code = '200'
+            # TODO need to do something with the other status codes
         self.current_api['responses'][status_code]['schema']['items'][-1]['description'] = content.strip()
 
     def search_stack_for(self, tag_name):
@@ -293,7 +299,13 @@ class ContentHandler(xml.sax.ContentHandler):
                     'method': name,
                     'produces': set(),
                     'consumes': set(),
-                    'parameters': [],
+                    'parameters': [{'in': "body",
+                                    'name': "body",
+                                    'description': "",
+                                    'required': False,
+                                    'schema': {
+                                        '$ref': "#/definitions/%s" % id
+                                    }}],
                     'responses': {},
                 }
                 if tag:
@@ -328,6 +340,11 @@ class ContentHandler(xml.sax.ContentHandler):
             if self.search_stack_for('response') is not None:
                 type = 'response'
                 status_code = self.search_stack_for('response')['status']
+                if ' ' in status_code:
+                    status_codes = status_code.split(' ')
+                    if '200' in status_codes:
+                        status_code = '200'
+                    # TODO need to do something with the other status codes
             elif self.search_stack_for('request') is not None:
                 type = 'request'
             else:
@@ -357,19 +374,40 @@ class ContentHandler(xml.sax.ContentHandler):
             if 'status' not in attrs:
                 return
             status_code = attrs['status']
-            self.current_api['responses'][status_code] = {}
+            if ' ' in status_code:
+                status_codes = status_code.split(' ')
+                for status_code in status_codes:
+                    self.current_api['responses'][status_code] = {}
+            else:
+                self.current_api['responses'][status_code] = {}
 
         if self.on_top_tag_stack('request', 'representation', 'param'):
+            parameters = self.current_api['parameters']
             name = attrs['name']
-            self.current_api['parameters'].append(
-                create_parameter(
-                    name=name,
-                    _in=attrs.get('style', 'plain'),
-                    description='',
-                    type=attrs.get('type', 'string'),
-                    required=attrs.get('required')))
+            parameter = create_parameter(
+                name=name,
+                _in=attrs.get('style', 'plain'),
+                description='',
+                type=attrs.get('type', 'string'),
+                required=attrs.get('required'))
+            if parameter['in'] == 'body':
+                schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
+                if schema_name not in self.schemas:
+                    self.schemas[schema_name] = {'type': 'object',
+                                                 'properties': {}}
+                schema_properties = self.schemas[schema_name]['properties']
+                schema_properties[parameter['name']] = parameter
+                del parameter['name']
+                del parameter['in']
+            else:
+                parameters.append(parameter)
         if self.on_top_tag_stack('response', 'representation', 'param'):
             status_code = self.attr_stack[-3]['status']
+            if ' ' in status_code:
+                status_codes = status_code.split(' ')
+                if '200' in status_codes:
+                    status_code = '200'
+                # TODO need to do something with the other status codes
             name = attrs['name']
             if 'schema' not in self.current_api['responses'][status_code]:
                 self.current_api['responses'][status_code]['schema'] = {
@@ -389,6 +427,14 @@ class ContentHandler(xml.sax.ContentHandler):
 
         content = ' '.join(self.content)
 
+        if self.current_api and name == 'method':
+            # Clean up the parameters of methods that have take no
+            # body content.
+            parameters = self.current_api['parameters']
+            schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
+            if schema_name not in self.schemas:
+                self.current_api['parameters'] \
+                    = self.current_api['parameters'][1:]
         # URL paths
         if name == 'resource':
             self.url.pop()
@@ -434,6 +480,7 @@ def main(source_file, output_dir):
         xml.sax.parse(file, ch)
         for path, apis in ch.apis.items():
             output['paths'][path].extend(apis)
+        output['definitions'].update(ch.schemas)
     os.chdir(output_dir)
     pathname = '%s-%s-swagger.json' % (api_ref['service'],
                                        api_ref['version'])

@@ -312,7 +312,10 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
             self.content = []
 
         if self.on_top_tag_stack('chapter', 'title'):
-            self.api_parser.title = content.strip()
+            title = content.strip()
+            title = title.split('API', 1)[0]
+            title = title + 'API'
+            self.api_parser.title = title
             self.content = []
 
         if self.on_top_tag_stack('chapter', 'section'):

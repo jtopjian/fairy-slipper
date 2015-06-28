@@ -263,7 +263,6 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
     def startDocument(self):
         self.tags = {}
         self.current_tag = None
-        self.methods = {}
 
         # general state
         self.tag_stack = []
@@ -293,12 +292,24 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
             self.current_tag = {'name': id}
             self.api_parser.tags.append(self.current_tag)
 
+        if name == 'wadl:resource':
+            filename, resource_id = attrs['href'].split("#")
+            dir = path.dirname(self.filename)
+            filepath = path.abspath(path.join(dir, filename))
+            self.api_parser.resource_tags[filepath + '#' + resource_id] = self.current_tag['name']
+
+        if name == 'wadl:resources':
+            if 'href' in attrs:
+                dir = path.dirname(self.filename)
+                filepath = path.abspath(path.join(dir, attrs['href']))
+                self.api_parser.file_tags[filepath] = self.current_tag['name']
+
         if self.on_top_tag_stack('wadl:resource', 'wadl:method'):
             resource = self.search_stack_for('wadl:resource')
             dir = path.dirname(self.filename)
             filename = resource['href'].split("#")[0]
             filepath = path.abspath(path.join(dir, filename))
-            self.api_parser.methods[filepath + attrs['href']] = self.current_tag['name']
+            self.api_parser.method_tags[filepath + attrs['href']] = self.current_tag['name']
 
         fn = getattr(self, 'visit_%s' % name, None)
         if fn:
@@ -368,7 +379,9 @@ class APIRefContentHandler(xml.sax.ContentHandler):
     def startDocument(self):
         self.tags = []
         self.current_tag = None
-        self.methods = {}
+        self.method_tags = {}
+        self.resource_tags = {}
+        self.file_tags = {}
 
         # general state
         self.tag_stack = []
@@ -430,7 +443,9 @@ def main(source_file, output_dir):
         'service': ch.service,
         'version': ch.version,
         'tags': ch.tags,
-        'paths': ch.methods,
+        'method_tags': ch.method_tags,
+        'file_tags': ch.file_tags,
+        'resource_tags': ch.resource_tags,
     }
     pathname = 'api-ref-%s-%s.json' % (ch.service,
                                ch.version)

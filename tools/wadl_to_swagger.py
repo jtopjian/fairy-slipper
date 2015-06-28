@@ -182,9 +182,16 @@ class ContentHandler(xml.sax.ContentHandler):
         self.filename = filename
         self.api_ref = api_ref
         abs_filename = path.abspath(self.filename)
-        self.tag_map = {method.split('#', 1)[1]: tag
-                        for method, tag in self.api_ref['paths'].items()
-                        if method.split('#', 1)[0] == abs_filename}
+        self.method_tag_map = {method.split('#', 1)[1]: tag
+                               for method, tag
+                               in self.api_ref['method_tags'].items()
+                               if method.split('#', 1)[0] == abs_filename}
+        self.resource_tag_map = {resource.split('#', 1)[1]: tag
+                                 for resource, tag
+                                 in self.api_ref['resource_tags'].items()
+                                 if resource.split('#', 1)[0] == abs_filename}
+        self.file_tag = self.api_ref['file_tags'].get(abs_filename, None)
+        self.actual_tags = set(tag['name'] for tag in self.api_ref['tags'])
 
     def startDocument(self):
         # API state
@@ -195,6 +202,8 @@ class ContentHandler(xml.sax.ContentHandler):
         # Resource Mapping
         self.resource_map = {}
         self.resource_types = {}
+        self.resource_ids = defaultdict(list)
+        self.resource_id_stack = []
 
         # URL paths
         self.url_map = {}
@@ -206,9 +215,6 @@ class ContentHandler(xml.sax.ContentHandler):
         self.attr_stack = []
         self.content = None
         self.parser = None
-
-        # metadata
-        self.global_tags = []
 
     def detach_subparser(self, result):
         self.parser = None
@@ -296,14 +302,14 @@ class ContentHandler(xml.sax.ContentHandler):
                         'parameters': {},
                     }
                     return
-                tag = self.tag_map.get(id, '')
+                tag = self.method_tag_map.get(id, '')
                 name = attrs['name'].lower()
                 if url in self.apis:
                     root_api = self.apis[url]
                 else:
                     self.apis[url] = root_api = []
                 self.current_api = {
-                    'tags': copy(self.global_tags),
+                    'tags': set(),
                     'method': name,
                     'produces': set(),
                     'consumes': set(),
@@ -316,8 +322,19 @@ class ContentHandler(xml.sax.ContentHandler):
                                     }}],
                     'responses': {},
                 }
+                if id in self.resource_ids:
+                    for tag_id in self.resource_ids[id]:
+                        if tag_id not in self.actual_tags:
+                            continue
+                        self.current_api['tags'].add(tag_id)
                 if tag:
-                    self.current_api['tags'].append(tag)
+                    self.current_api['tags'].add(tag)
+                if self.file_tag:
+                    self.current_api['tags'].add(self.file_tag)
+                self.current_api['tags'] = list(self.current_api['tags'])
+                # If there are no tags then we couldn't find the
+                # method in the chapters.
+                if self.current_api['tags']:
                     root_api.append(self.current_api)
                 else:
                     log.warning("Can't find method %s" % id)
@@ -326,21 +343,24 @@ class ContentHandler(xml.sax.ContentHandler):
                     if ('{%s}' % param) in url:
                         self.current_api['parameters'].append(
                             create_parameter(param, 'template', doc))
+
         # URL paths
         if name == 'resource':
             self.url.append(attrs.get('path', '/').replace('//', '/'))
-        if self.tag_stack[-2:] == ['resource_type', 'method']:
+            self.resource_id_stack.append(attrs.get('id', None))
+        if self.on_top_tag_stack('resource_type', 'method'):
             self.resource_map[attrs.get('href').strip('#')] \
                 = self.attr_stack[-2]['id']
 
         # Methods and Resource Types
-        if self.on_top_tag_stack('application', 'resource'):
-            self.global_tags.append(attrs['id'])
         if name == 'resource' and attrs.get('type'):
             self.resource_types[attrs.get('type').strip('#')] \
                 = '/'.join(self.url)
         if self.on_top_tag_stack('resource', 'method'):
-            self.url_map[attrs.get('href').strip('#')] = '/'.join(self.url)
+            href = attrs.get('href').strip('#')
+            self.url_map[href] = '/'.join(self.url)
+            self.resource_ids[href] = [r_id for r_id in self.resource_id_stack
+                                       if r_id]
 
         if name == 'xsdxt:code':
             if not attrs.get('href'):
@@ -447,6 +467,7 @@ class ContentHandler(xml.sax.ContentHandler):
         # URL paths
         if name == 'resource':
             self.url.pop()
+            self.resource_id_stack.pop()
 
         self.tag_stack.pop()
         self.attr_stack.pop()
@@ -463,8 +484,13 @@ class ContentHandler(xml.sax.ContentHandler):
 def main(source_file, output_dir):
     log.info('Reading API description from %s' % source_file)
     api_ref = json.load(open(source_file))
-    files = set([path.split('#', 1)[0]
-                 for path in api_ref['paths'].keys()])
+    files = set()
+    for filepath in api_ref['method_tags'].keys():
+        files.add(filepath.split('#', 1)[0])
+    for filepath in api_ref['resource_tags'].keys():
+        files.add(filepath.split('#', 1)[0])
+    for filepath in api_ref['file_tags'].keys():
+        files.add(filepath.split('#', 1)[0])
 
     output = {
         u'info': {'version': api_ref['version'],
@@ -487,8 +513,8 @@ def main(source_file, output_dir):
         log.info('Parsing %s' % file)
         ch = ContentHandler(file, api_ref)
         xml.sax.parse(file, ch)
-        for path, apis in ch.apis.items():
-            output['paths'][path].extend(apis)
+        for urlpath, apis in ch.apis.items():
+            output['paths'][urlpath].extend(apis)
         output['definitions'].update(ch.schemas)
     os.chdir(output_dir)
     pathname = '%s-%s-swagger.json' % (api_ref['service'],

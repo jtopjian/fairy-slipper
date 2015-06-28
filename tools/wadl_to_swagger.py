@@ -324,7 +324,8 @@ class ContentHandler(xml.sax.ContentHandler):
                 }
                 if id in self.resource_ids:
                     for tag_id in self.resource_ids[id]:
-                        if tag_id not in self.actual_tags:
+                        r_tag_id = self.resource_tag_map.get(tag_id)
+                        if r_tag_id not in self.actual_tags:
                             continue
                         self.current_api['tags'].add(tag_id)
                 if tag:
@@ -346,7 +347,7 @@ class ContentHandler(xml.sax.ContentHandler):
 
         # URL paths
         if name == 'resource':
-            self.url.append(attrs.get('path', '/').replace('//', '/'))
+            self.url.append(attrs.get('path', '').replace('//', '/'))
             self.resource_id_stack.append(attrs.get('id', None))
         if self.on_top_tag_stack('resource_type', 'method'):
             self.resource_map[attrs.get('href').strip('#')] \

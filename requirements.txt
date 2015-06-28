@@ -8,3 +8,4 @@ oslo.serialization
 webob
 docutils
 pecan
+jinja2

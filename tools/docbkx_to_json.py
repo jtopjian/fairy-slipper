@@ -13,8 +13,8 @@ import json
 log = logging.getLogger(__file__)
 
 
-SECTIONS = {u'API_Versions': u'API-Versions',
-            u'Database_Instances': u'Database-Instances',
+SECTIONS = {u'API_Versions': u'api-versions',
+            u'Database_Instances': u'database-instances',
             u'admin-tenants': u'admin-tenants',
             u'admin-tokens': u'admin-tokens',
             u'admin-users': u'admin-users',

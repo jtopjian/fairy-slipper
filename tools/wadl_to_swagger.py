@@ -239,7 +239,16 @@ class ContentHandler(xml.sax.ContentHandler):
         self.current_api['description'] = content.strip()
 
     def request_parameter_description(self, content):
-        self.current_api['parameters'][-1]['description'] = content.strip()
+        param = self.search_stack_for('param')
+        style = STYLE_MAP[param['style']]
+        name = param['name']
+        if style == 'body':
+            parameters = self.current_api['parameters']
+            schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
+            schema = self.schemas[schema_name]
+            schema['properties'][name]['description'] = content.strip()
+        else:
+            self.current_api['parameters'][-1]['description'] = content.strip()
 
     def response_schema_description(self, content):
         status_code = self.search_stack_for('response')['status']
@@ -248,7 +257,18 @@ class ContentHandler(xml.sax.ContentHandler):
             if '200' in status_codes:
                 status_code = '200'
             # TODO need to do something with the other status codes
-        self.current_api['responses'][status_code]['schema']['items'][-1]['description'] = content.strip()
+        param = self.search_stack_for('param')
+        style = STYLE_MAP[param['style']]
+        name = param['name']
+        if style == 'header':
+            response = self.current_api['responses'][status_code]
+            response['headers'][name]['description'] = content.strip()
+        elif style == 'body':
+            parameters = self.current_api['parameters']
+            schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
+            schema_name = schema_name + '_' + status_code
+            schema = self.schemas[schema_name]
+            schema['properties'][name]['description'] = content.strip()
 
     def search_stack_for(self, tag_name):
         for tag, attrs in zip(reversed(self.tag_stack),
@@ -400,17 +420,26 @@ class ContentHandler(xml.sax.ContentHandler):
                 if 'examples' not in response:
                     response['examples'] = {}
                 response['examples'][media_type] = sample
+            elif sample and type == 'request':
+                # Add request examples (Not swagger supported)
+                if 'examples' not in self.current_api:
+                    self.current_api['examples'] = {}
+                self.current_api['examples'][media_type] = sample
 
         if name == 'response':
             if 'status' not in attrs:
                 return
             status_code = attrs['status']
+            response = {
+                'headers': {},
+                'examples': {},
+            }
             if ' ' in status_code:
                 status_codes = status_code.split(' ')
                 for status_code in status_codes:
-                    self.current_api['responses'][status_code] = {}
+                    self.current_api['responses'][status_code] = response
             else:
-                self.current_api['responses'][status_code] = {}
+                self.current_api['responses'][status_code] = response
 
         if self.on_top_tag_stack('request', 'representation', 'param'):
             parameters = self.current_api['parameters']
@@ -433,6 +462,7 @@ class ContentHandler(xml.sax.ContentHandler):
             else:
                 parameters.append(parameter)
         if self.on_top_tag_stack('response', 'representation', 'param'):
+            parameters = self.current_api['parameters']
             status_code = self.attr_stack[-3]['status']
             if ' ' in status_code:
                 status_codes = status_code.split(' ')
@@ -440,17 +470,27 @@ class ContentHandler(xml.sax.ContentHandler):
                     status_code = '200'
                 # TODO need to do something with the other status codes
             name = attrs['name']
-            if 'schema' not in self.current_api['responses'][status_code]:
-                self.current_api['responses'][status_code]['schema'] = {
-                    'items': [],
-                }
-            self.current_api['responses'][status_code]['schema']['items'].append(
-                create_parameter(
-                    name=name,
-                    _in=attrs.get('style', 'plain'),
-                    description='',
-                    type=attrs.get('type', 'string'),
-                    required=attrs.get('required')))
+            parameter = create_parameter(
+                name=name,
+                _in=attrs.get('style', 'plain'),
+                description='',
+                type=attrs.get('type', 'string'),
+                required=attrs.get('required'))
+            if parameter['in'] == 'body':
+                schema_name = parameters[0]['schema']['$ref'].rsplit('/', 1)[1]
+                schema_name = schema_name + '_' + status_code
+                if schema_name not in self.schemas:
+                    self.schemas[schema_name] = {'type': 'object',
+                                                 'properties': {}}
+                schema_properties = self.schemas[schema_name]['properties']
+                schema_properties[parameter['name']] = parameter
+                del parameter['name']
+                del parameter['in']
+            elif parameter['in'] == 'header':
+                headers = self.current_api['responses'][status_code]['headers']
+                headers[parameter['name']] = parameter
+                del parameter['name']
+                del parameter['in']
 
     def endElement(self, name):
         if self.parser:

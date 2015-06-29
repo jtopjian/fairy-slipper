@@ -498,6 +498,7 @@ def main(source_file, output_dir):
     output = {
         u'info': {'version': api_ref['version'],
                   'title': api_ref['title'],
+                  'service': api_ref['service'],
                   'license': {
                       "name": "Apache 2.0",
                       "url": "http://www.apache.org/licenses/LICENSE-2.0.html"

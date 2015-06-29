@@ -9,7 +9,7 @@ import json
 import codecs
 import textwrap
 
-from jinja2 import Template
+from jinja2 import Template, Environment, environmentfilter
 
 log = logging.getLogger(__file__)
 
@@ -23,8 +23,13 @@ TMPL_TXT = """
 .. http:{{request.method}}:: {{path}}
 
 {{wrap(request.description)}}
+
 {% for parameter in request.parameters -%}
-{% if parameter.in == 'path' %}
+{% if parameter.in == 'body' %}
+{% if parameter.schema %}
+   :swagger-schema {{parameter.schema['$ref']|schema_path}}: {{parameter.description}}
+{%- endif -%}
+{% elif parameter.in == 'path' %}
    :parameter {{parameter.name}}: {{parameter.description}}
 {%- elif parameter.in == 'query' %}
    :query {{parameter.name}}: {{parameter.description}}
@@ -34,7 +39,24 @@ TMPL_TXT = """
 {% endfor -%}
 {% endfor -%}
 """
-TMPL = Template(TMPL_TXT)
+environment = Environment()
+
+
+def format_json(obj):
+    string = json.dumps(obj, indent=2)
+    return '\n'.join(['      ' + line for line in string.split('\n')])
+
+environment.filters['format_json'] = format_json
+
+
+@environmentfilter
+def schema_path(env, obj):
+    service = env.swagger_info['service']
+    version = env.swagger_info['version']
+    schema_name = obj.rsplit('/', 1)[-1]
+    return '/'.join([service, version, schema_name])
+
+environment.filters['schema_path'] = schema_path
 
 
 def wrapper(string):
@@ -56,11 +78,41 @@ def wrapper(string):
 def main(filename, output_dir):
     log.info('Parsing %s' % filename)
     swagger = json.load(open(filename))
+    write_rst(swagger, output_dir)
+    write_jsonschema(swagger, output_dir)
+
+
+def write_rst(swagger, output_dir):
     output_file = path.basename(filename).rsplit('.', 1)[0] + '.rst'
-    result = TMPL.render(swagger=swagger, wrap=wrapper)
-    with codecs.open(path.join(output_dir, output_file),
+    environment.extend(swagger_info=swagger['info'])
+    TMPL = environment.from_string(TMPL_TXT)
+    result = TMPL.render(swagger=swagger,
+                         wrap=wrapper,
+                         format_json=format_json)
+    filepath = path.join(output_dir, output_file)
+    log.info("Writing %s", filepath)
+    with codecs.open(filepath,
                      'w', "utf-8") as out_file:
         out_file.write(result)
+
+
+def write_jsonschema(swagger, output_dir):
+    info = swagger['info']
+    version = info['version']
+    service = info['service']
+    service_path = path.join(output_dir, service)
+    full_path = path.join(service_path, version)
+    if not path.exists(service_path):
+        os.makedirs(service_path)
+    if not path.exists(full_path):
+        os.makedirs(full_path)
+
+    for schema_name, schema in swagger['definitions'].items():
+        filename = '%s.json' % schema_name
+        filepath = path.join(full_path, filename)
+        log.info("Writing %s", filepath)
+        file = open(filepath, 'w')
+        json.dump(schema, file, indent=2)
 
 
 if '__main__' == __name__:

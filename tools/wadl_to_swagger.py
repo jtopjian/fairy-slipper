@@ -435,6 +435,9 @@ class WADLHandler(xml.sax.ContentHandler):
             if ' ' in status_code:
                 status_codes = status_code.split(' ')
                 for status_code in status_codes:
+                    # For each of the multiple status make copies of
+                    # blank responses?  The duplicates will be ignored
+                    # by subsequent calls that update the response object.
                     self.current_api['responses'][status_code] = copy(response)
             else:
                 self.current_api['responses'][status_code] = response

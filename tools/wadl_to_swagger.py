@@ -318,6 +318,7 @@ class ContentHandler(xml.sax.ContentHandler):
                     self.current_api = {
                         'produces': set(),
                         'consumes': set(),
+                        'examples': {},
                         'responses': {},
                         'parameters': {},
                     }
@@ -333,6 +334,7 @@ class ContentHandler(xml.sax.ContentHandler):
                     'method': name,
                     'produces': set(),
                     'consumes': set(),
+                    'examples': {},
                     'parameters': [{'in': "body",
                                     'name': "body",
                                     'description': "",
@@ -417,13 +419,9 @@ class ContentHandler(xml.sax.ContentHandler):
             self.current_api['consumes'].add(media_type)
             if sample and type == 'response':
                 response = self.current_api['responses'][status_code]
-                if 'examples' not in response:
-                    response['examples'] = {}
                 response['examples'][media_type] = sample
             elif sample and type == 'request':
                 # Add request examples (Not swagger supported)
-                if 'examples' not in self.current_api:
-                    self.current_api['examples'] = {}
                 self.current_api['examples'][media_type] = sample
 
         if name == 'response':

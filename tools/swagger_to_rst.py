@@ -9,21 +9,36 @@ import json
 import codecs
 import textwrap
 
-from jinja2 import Template, Environment, environmentfilter
+from jinja2 import Environment, environmentfilter
 
 log = logging.getLogger(__file__)
 
 TMPL_TXT = """
-{% for path, requests in swagger['paths'].items() -%}
-{% for request in requests -%}
+{%- for path, requests in swagger['paths'].items() -%}
+{%- for request in requests -%}
 
 {{request.summary}}
 {{ "=" * request.summary|length }}
 
 .. http:{{request.method}}:: {{path}}
 
-{{wrap(request.description)}}
+{{request.description|wrap}}
+{% if request['examples']['application/json'] %}
+   **Example request**
 
+   .. sourcecode:: http
+
+{{request['examples']['application/json']|format_json}}
+{% endif -%}
+{% for status_code, response in request.responses.items() -%}
+{%- if response['examples']['application/json'] %}
+   **Example response**
+
+   .. sourcecode:: http
+
+{{response['examples']['application/json']|format_json}}
+{% endif -%}
+{% endfor -%}
 {% for parameter in request.parameters -%}
 {% if parameter.in == 'body' %}
 {% if parameter.schema %}
@@ -34,10 +49,14 @@ TMPL_TXT = """
 {%- elif parameter.in == 'query' %}
    :query {{parameter.name}}: {{parameter.description}}
 {%- endif %}
+{%- endfor -%}
+{% for status_code, response in request.responses.items() %}
+   :response {{status_code}}: {{response.description}}
 {%- endfor %}
 
-{% endfor -%}
-{% endfor -%}
+
+{% endfor %}
+{%- endfor %}
 """
 environment = Environment()
 
@@ -74,6 +93,8 @@ def wrapper(string):
 
     return '\n'.join(new_text)
 
+environment.filters['wrap'] = wrapper
+
 
 def main(filename, output_dir):
     log.info('Parsing %s' % filename)
@@ -86,9 +107,7 @@ def write_rst(swagger, output_dir):
     output_file = path.basename(filename).rsplit('.', 1)[0] + '.rst'
     environment.extend(swagger_info=swagger['info'])
     TMPL = environment.from_string(TMPL_TXT)
-    result = TMPL.render(swagger=swagger,
-                         wrap=wrapper,
-                         format_json=format_json)
+    result = TMPL.render(swagger=swagger)
     filepath = path.join(output_dir, output_file)
     log.info("Writing %s", filepath)
     with codecs.open(filepath,

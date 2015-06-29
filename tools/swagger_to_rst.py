@@ -13,7 +13,7 @@ from jinja2 import Environment, environmentfilter
 
 log = logging.getLogger(__file__)
 
-TMPL_TXT = """
+TMPL_API = """
 {%- for path, requests in swagger['paths'].items() -%}
 {%- for request in requests -%}
 
@@ -39,6 +39,9 @@ TMPL_TXT = """
 {{response['examples']['application/json']|format_json}}
 {% endif -%}
 {% endfor -%}
+{% for tag in request.tags %}
+   :swagger-tag: {{tag}}
+{%- endfor -%}
 {% for parameter in request.parameters -%}
 {% if parameter.in == 'body' %}
 {% if parameter.schema %}
@@ -57,6 +60,17 @@ TMPL_TXT = """
 
 {% endfor %}
 {%- endfor %}
+"""
+
+TMPL_TAG = """
+{%- for tag in swagger.tags -%}
+{{tag.description}}
+{{ "=" * tag.description|length }}
+
+.. swagger:tag:: {{tag.name}}
+{{tag.summary|wrap}}
+
+{% endfor %}
 """
 environment = Environment()
 
@@ -104,12 +118,28 @@ def main(filename, output_dir):
 
 
 def write_rst(swagger, output_dir):
-    output_file = path.basename(filename).rsplit('.', 1)[0] + '.rst'
     environment.extend(swagger_info=swagger['info'])
-    TMPL = environment.from_string(TMPL_TXT)
+    write_apis(swagger, output_dir)
+    write_tags(swagger, output_dir)
+
+
+def write_apis(swagger, output_dir):
+    output_file = path.basename(filename).rsplit('.', 1)[0] + '.rst'
+    TMPL = environment.from_string(TMPL_API)
     result = TMPL.render(swagger=swagger)
     filepath = path.join(output_dir, output_file)
-    log.info("Writing %s", filepath)
+    log.info("Writing APIs %s", filepath)
+    with codecs.open(filepath,
+                     'w', "utf-8") as out_file:
+        out_file.write(result)
+
+
+def write_tags(swagger, output_dir):
+    output_file = path.basename(filename).rsplit('.', 1)[0] + '-tags.rst'
+    TMPL = environment.from_string(TMPL_TAG)
+    result = TMPL.render(swagger=swagger)
+    filepath = path.join(output_dir, output_file)
+    log.info("Writing Tags %s", filepath)
     with codecs.open(filepath,
                      'w', "utf-8") as out_file:
         out_file.write(result)

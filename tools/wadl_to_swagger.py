@@ -340,7 +340,7 @@ class ContentHandler(xml.sax.ContentHandler):
                 if self.current_api['tags']:
                     root_api.append(self.current_api)
                 else:
-                    log.warning("Can't find method %s" % id)
+                    log.warning("No tags for method %s" % id)
 
                 for param, doc in self.url_params.items():
                     if ('{%s}' % param) in url:

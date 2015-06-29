@@ -176,7 +176,7 @@ class ParaParser(SubParser):
         self.content.append(content)
 
 
-class ContentHandler(xml.sax.ContentHandler):
+class WADLHandler(xml.sax.ContentHandler):
 
     def __init__(self, filename, api_ref):
         self.filename = filename
@@ -553,7 +553,7 @@ def main(source_file, output_dir):
     }
     for file in files:
         log.info('Parsing %s' % file)
-        ch = ContentHandler(file, api_ref)
+        ch = WADLHandler(file, api_ref)
         xml.sax.parse(file, ch)
         for urlpath, apis in ch.apis.items():
             output['paths'][urlpath].extend(apis)

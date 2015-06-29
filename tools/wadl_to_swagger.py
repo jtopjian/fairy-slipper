@@ -331,7 +331,7 @@ class ContentHandler(xml.sax.ContentHandler):
                             continue
                         self.current_api['tags'].add(r_tag_id)
                         break
-                else:
+                if not self.current_api['tags']:
                     if self.file_tag:
                         self.current_api['tags'].add(self.file_tag)
                 self.current_api['tags'] = list(self.current_api['tags'])

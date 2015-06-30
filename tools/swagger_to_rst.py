@@ -24,28 +24,20 @@ TMPL_API = """
 
 {{request.description|wrap}}
 {% if request['examples']['application/json'] %}
-   **Example request**
-
-   .. sourcecode:: http
-
-{{request['examples']['application/json']|format_json}}
-{% endif -%}
+   :swagger-request: {{version}}/examples/{{request['id']}}_req.json
+{%- endif -%}
 {% for status_code, response in request.responses.items() -%}
 {%- if response['examples']['application/json'] %}
-   **Example response**
-
-   .. sourcecode:: http
-
-{{response['examples']['application/json']|format_json}}
-{% endif -%}
+   :swagger-response {{status_code}}: {{version}}/examples/{{request['id']}}_resp_{{status_code}}.json
+{%- endif -%}
 {% endfor -%}
 {% for tag in request.tags %}
    :swagger-tag: {{tag}}
 {%- endfor -%}
 {% for parameter in request.parameters -%}
-{% if parameter.in == 'body' %}
+{% if parameter.in == 'body' -%}
 {% if parameter.schema %}
-   :swagger-schema {{parameter.schema['$ref']|schema_path}}: {{parameter.description}}
+   :swagger-schema: {{version}}/{{request['id']}}.json
 {%- endif -%}
 {% elif parameter.in == 'path' %}
    :parameter {{parameter.name}}: {{parameter.description}}
@@ -75,23 +67,6 @@ TMPL_TAG = """
 environment = Environment()
 
 
-def format_json(obj):
-    string = json.dumps(obj, indent=2)
-    return '\n'.join(['      ' + line for line in string.split('\n')])
-
-environment.filters['format_json'] = format_json
-
-
-@environmentfilter
-def schema_path(env, obj):
-    service = env.swagger_info['service']
-    version = env.swagger_info['version']
-    schema_name = obj.rsplit('/', 1)[-1]
-    return '/'.join([service, version, schema_name])
-
-environment.filters['schema_path'] = schema_path
-
-
 def wrapper(string):
     wrap = textwrap.TextWrapper(initial_indent='   ',
                                 subsequent_indent='   ')
@@ -115,6 +90,7 @@ def main(filename, output_dir):
     swagger = json.load(open(filename))
     write_rst(swagger, output_dir)
     write_jsonschema(swagger, output_dir)
+    write_examples(swagger, output_dir)
 
 
 def write_rst(swagger, output_dir):
@@ -124,10 +100,17 @@ def write_rst(swagger, output_dir):
 
 
 def write_apis(swagger, output_dir):
-    output_file = path.basename(filename).rsplit('.', 1)[0] + '.rst'
+    info = swagger['info']
+    version = info['version']
+    service = info['service']
+    service_path = path.join(output_dir, service)
+    output_file = '%s.rst' % version
+    if not path.exists(service_path):
+        os.makedirs(service_path)
     TMPL = environment.from_string(TMPL_API)
-    result = TMPL.render(swagger=swagger)
-    filepath = path.join(output_dir, output_file)
+    result = TMPL.render(swagger=swagger,
+                         version=swagger['info']['version'])
+    filepath = path.join(service_path, output_file)
     log.info("Writing APIs %s", filepath)
     with codecs.open(filepath,
                      'w', "utf-8") as out_file:
@@ -135,10 +118,17 @@ def write_apis(swagger, output_dir):
 
 
 def write_tags(swagger, output_dir):
-    output_file = path.basename(filename).rsplit('.', 1)[0] + '-tags.rst'
+    info = swagger['info']
+    version = info['version']
+    service = info['service']
+    service_path = path.join(output_dir, service)
+    if not path.exists(service_path):
+        os.makedirs(service_path)
+    output_file = '%s-tags.rst' % version
     TMPL = environment.from_string(TMPL_TAG)
-    result = TMPL.render(swagger=swagger)
-    filepath = path.join(output_dir, output_file)
+    result = TMPL.render(swagger=swagger,
+                         version=swagger['info']['version'])
+    filepath = path.join(service_path, output_file)
     log.info("Writing Tags %s", filepath)
     with codecs.open(filepath,
                      'w', "utf-8") as out_file:
@@ -162,6 +152,56 @@ def write_jsonschema(swagger, output_dir):
         log.info("Writing %s", filepath)
         file = open(filepath, 'w')
         json.dump(schema, file, indent=2)
+
+
+def write_examples(swagger, output_dir):
+    info = swagger['info']
+    version = info['version']
+    service = info['service']
+    service_path = path.join(output_dir, service)
+    versioned_path = path.join(service_path, version)
+    full_path = path.join(versioned_path, 'examples')
+    if not path.exists(service_path):
+        os.makedirs(service_path)
+    if not path.exists(versioned_path):
+        os.makedirs(versioned_path)
+    if not path.exists(full_path):
+        os.makedirs(full_path)
+
+    for operations in swagger['paths'].values():
+        for operation in operations:
+            if 'examples' in operation:
+                for mime, example in operation['examples'].items():
+                    filename = '%s' % '_'.join([operation['id'], 'req'])
+                    if mime == 'application/json':
+                        filepath = path.join(full_path, filename + '.json')
+                        log.info("Writing %s", filepath)
+                        file = open(filepath, 'w')
+                        json.dump(example, file, indent=2)
+                    if mime == 'text/plain':
+                        filepath = path.join(full_path, filename + '.txt')
+                        log.info("Writing %s", filepath)
+                        example = example.strip()
+                        example = example + '\n'
+                        file = open(filepath, 'w')
+                        file.write(example)
+            for status_code, response in operation['responses'].items():
+                for mime, example in response['examples'].items():
+                    filename = '%s' % '_'.join([operation['id'],
+                                                'resp',
+                                                status_code])
+                    if mime == 'application/json':
+                        filepath = path.join(full_path, filename + '.json')
+                        log.info("Writing %s", filepath)
+                        file = open(filepath, 'w')
+                        json.dump(example, file, indent=2)
+                    if mime == 'text/plain':
+                        filepath = path.join(full_path, filename + '.txt')
+                        log.info("Writing %s", filepath)
+                        example = example.strip()
+                        example = example + '\n'
+                        file = open(filepath, 'w')
+                        file.write(example)
 
 
 if '__main__' == __name__:

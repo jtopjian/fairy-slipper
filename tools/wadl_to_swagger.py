@@ -330,6 +330,7 @@ class WADLHandler(xml.sax.ContentHandler):
                 else:
                     self.apis[url] = root_api = []
                 self.current_api = {
+                    'id': id,
                     'tags': set(),
                     'method': name,
                     'produces': set(),
@@ -405,6 +406,10 @@ class WADLHandler(xml.sax.ContentHandler):
                           self.tag_stack)
                 raise Exception("Can't find request or response tag.")
             media_type = MIME_MAP[attrs['href'].rsplit('.', 1)[-1]]
+
+            # XML is removed, skip all these
+            if media_type == 'application/xml':
+                return
 
             pathname = path.join(path.dirname(self.filename), attrs['href'])
             try:

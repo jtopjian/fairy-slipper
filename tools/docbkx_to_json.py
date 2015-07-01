@@ -8,6 +8,7 @@ import os
 import re
 import xml.sax
 from os import path
+import textwrap
 
 import prettytable
 
@@ -250,6 +251,23 @@ SECTIONS = {u'API_Versions': u'api-versions',
 VERSION_RE = re.compile('v[0-9\.]+')
 WHITESPACE_RE = re.compile('[\s]+', re.MULTILINE)
 
+# def wrapper(string):
+#     wrap = textwrap.TextWrapper(initial_indent='   ',
+#                                 subsequent_indent='   ')
+#     bullet_wrap = textwrap.TextWrapper(initial_indent='   ',
+#                                        subsequent_indent='     ')
+#     new_text = []
+#     for line in string.split('\n'):
+#         if BULLET_RE.search(line):
+#             new_text.extend(bullet_wrap.wrap(line.strip()))
+#         else:
+#             new_text.append('')  # newline here, because magic
+#             new_text.extend(wrap.wrap(line.strip()))
+
+#     return '\n'.join(new_text)
+
+# environment.filters['wrap'] = wrapper
+
 
 class TableMixin(object):
     def visit_table(self, attrs):
@@ -270,12 +288,10 @@ class TableMixin(object):
         self.__row = []
 
     def visit_td(self, attrs):
-        self.old_content = self.content
-        self.content = []
+        self.content_stack.append([])
 
     def depart_td(self):
-        self.__row.append(''.join(self.content).strip())
-        self.content = self.old_content
+        self.__row.append(''.join(self.content_stack.pop()).strip())
 
     def depart_tr(self):
         if self.__row:
@@ -301,9 +317,14 @@ class APIChapterContentHandler(xml.sax.ContentHandler, TableMixin):
         # general state
         self.tag_stack = []
         self.attr_stack = []
-        self.content = []
+        self.content_stack = [[]]
         self.current_emphasis = None
         self.nesting = 0
+        self.wrapper = textwrap.TextWrapper()
+
+    @property
+    def content(self):
+        return self.content_stack[-1]
 
     def search_stack_for(self, tag_name):
         for tag, attrs in zip(reversed(self.tag_stack),
@@ -320,8 +341,14 @@ class APIChapterContentHandler(xml.sax.ContentHandler, TableMixin):
         self.tag_stack.append(name)
         self.attr_stack.append(attrs)
 
+        if self.on_top_tag_stack('chapter', 'section', 'title'):
+            self.content_stack.append([])
+
+        if self.on_top_tag_stack('chapter', 'title'):
+            self.content_stack.append([])
+
         if self.on_top_tag_stack('chapter', 'section'):
-            self.content = []
+            self.content_stack.append([])
             id = attrs['xml:id']
             id = SECTIONS.get(id, id)
             self.current_tag = {'name': id}
@@ -355,18 +382,21 @@ class APIChapterContentHandler(xml.sax.ContentHandler, TableMixin):
 
         if self.on_top_tag_stack('chapter', 'section', 'title'):
             self.current_tag['description'] = content.strip()
-            self.content = []
+            self.content_stack.pop()
 
         if self.on_top_tag_stack('chapter', 'title'):
             title = content.strip()
             title = title.split('API', 1)[0]
             title = title + 'API'
             self.api_parser.title = title
-            self.content = []
+            self.content_stack.pop()
 
         if self.on_top_tag_stack('chapter', 'section'):
             self.current_tag['summary'] = content.strip()
-            self.content = []
+            self.content_stack.pop()
+            print('+++++' * 4)
+            print(self.current_tag['summary'])
+            print('+++++' * 4)
 
         self.tag_stack.pop()
         self.attr_stack.pop()
@@ -400,20 +430,29 @@ class APIChapterContentHandler(xml.sax.ContentHandler, TableMixin):
     def visit_listitem(self, attrs):
         self.nesting = len([tag for tag in self.tag_stack
                             if tag == 'listitem']) - 1
-        self.content.append('\n' + ' ' * self.nesting + '- ')
+        self.content_stack.append([' ' * self.nesting + '-'])
+        self.wrapper = textwrap.TextWrapper(
+            initial_indent=' ',
+            subsequent_indent=' ' * self.nesting + '  ',)
 
     def depart_listitem(self):
+        content = self.content_stack.pop()
+        self.content.append(''.join(content))
+        self.content.append('\n')
+
         self.nesting = len([tag for tag in self.tag_stack
                             if tag == 'listitem'])
 
     def depart_itemizedlist(self):
-        self.content.append('\n')
-
-    def depart_para(self):
         if self.search_stack_for('itemizedlist') is None:
-            self.content.append('\n')
+            self.wrapper = textwrap.TextWrapper()
+
+    def depart_orderedlist(self):
+        if self.search_stack_for('itemizedlist') is None:
+            self.wrapper = textwrap.TextWrapper()
 
     def visit_para(self, attrs):
+        self.content_stack.append([''])
         if self.search_stack_for('itemizedlist') is not None:
             return
         if self.content:
@@ -421,6 +460,18 @@ class APIChapterContentHandler(xml.sax.ContentHandler, TableMixin):
                 pass
             elif self.content[-1].endswith('\n'):
                 self.content.append('\n')
+
+    def depart_para(self):
+        content = ''.join(self.content_stack.pop()).strip()
+        wrapped = self.wrapper.wrap(content)
+        self.content.append('\n'.join(wrapped))
+        if self.search_stack_for('itemizedlist') is None:
+            self.content.append('\n\n')
+        else:
+            self.content.append('\n')
+            self.wrapper = textwrap.TextWrapper(
+                initial_indent=' ' * self.nesting + '  ',
+                subsequent_indent=' ' * self.nesting + '  ',)
 
     def visit_code(self, attrs):
         if not self.content[-1].endswith(' '):

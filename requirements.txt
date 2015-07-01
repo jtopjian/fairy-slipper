@@ -9,3 +9,4 @@ webob
 docutils
 pecan
 jinja2
+prettytable

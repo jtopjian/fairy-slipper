@@ -2,6 +2,7 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import re
 import os
 from os import path
 import logging
@@ -9,7 +10,7 @@ import json
 import codecs
 import textwrap
 
-from jinja2 import Environment, environmentfilter
+from jinja2 import Environment
 
 log = logging.getLogger(__file__)
 
@@ -21,8 +22,9 @@ TMPL_API = """
 {{ "=" * request.summary|length }}
 
 .. http:{{request.method}}:: {{path}}
-
-{{request.description|wrap}}
+{% for line in request.description.split('\n') %}
+   {{line}}
+{%- endfor %}
 {% if request['examples']['application/json'] %}
    :swagger-request: {{version}}/examples/{{request['id']}}_req.json
 {%- endif -%}
@@ -40,9 +42,9 @@ TMPL_API = """
    :swagger-schema: {{version}}/{{request['id']}}.json
 {%- endif -%}
 {% elif parameter.in == 'path' %}
-   :parameter {{parameter.name}}: {{parameter.description}}
+{{ parameter|format_param('path') }}
 {%- elif parameter.in == 'query' %}
-   :query {{parameter.name}}: {{parameter.description}}
+{{ parameter|format_param('query') }}
 {%- endif %}
 {%- endfor -%}
 {% for status_code, response in request.responses.items() %}
@@ -60,29 +62,24 @@ TMPL_TAG = """
 {{ "=" * tag.description|length }}
 
 .. swagger:tag:: {{tag.name}}
-{{tag.summary|wrap}}
+{% for line in tag.summary.split('\n') %}
+   {{line}}
+{%- endfor %}
 
 {% endfor %}
 """
 environment = Environment()
 
 
-def wrapper(string):
-    wrap = textwrap.TextWrapper(initial_indent='   ',
-                                subsequent_indent='   ')
-    bullet_wrap = textwrap.TextWrapper(initial_indent='   - ',
-                                       subsequent_indent='     ')
-    new_text = []
-    for line in string.split('\n'):
-        if line.startswith('-'):
-            new_text.extend(bullet_wrap.wrap(line[1:].strip()))
-        else:
-            new_text.append('')  # newline here, because magic
-            new_text.extend(wrap.wrap(line.strip()))
-
+def format_param(obj, type='query'):
+    param = '   :query %s: ' % obj['name']
+    param_wrap = textwrap.TextWrapper(
+        initial_indent=param,
+        subsequent_indent=' ' * len(param))
+    new_text = param_wrap.wrap(obj['description'])
     return '\n'.join(new_text)
 
-environment.filters['wrap'] = wrapper
+environment.filters['format_param'] = format_param
 
 
 def main(filename, output_dir):

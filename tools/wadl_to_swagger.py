@@ -2,14 +2,17 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import os
-from collections import defaultdict
-import re
-from os import path
-import xml.sax
-import logging
-from copy import copy
 import json
+import logging
+import os
+import re
+import textwrap
+import xml.sax
+from collections import defaultdict
+from copy import copy
+from os import path
+
+import prettytable
 
 log = logging.getLogger(__file__)
 
@@ -83,6 +86,7 @@ MIME_MAP = {
 }
 
 VERSION_RE = re.compile('v[0-9\.]+')
+WHITESPACE_RE = re.compile('[\s]+', re.MULTILINE)
 
 
 def create_parameter(name, _in, description='',
@@ -102,7 +106,6 @@ class SubParser(object):
         # general state
         self.tag_stack = []
         self.attr_stack = []
-        self.content = None
         self.parent = parent
         self.result = None
 
@@ -118,8 +121,48 @@ class SubParser(object):
         if not self.tag_stack:
             self.parent.detach_subparser(self.result)
 
+    def search_stack_for(self, tag_name):
+        for tag, attrs in zip(reversed(self.tag_stack),
+                              reversed(self.attr_stack)):
+            if tag == tag_name:
+                return attrs
 
-class ParaParser(SubParser):
+    def on_top_tag_stack(self, *args):
+        return self.tag_stack[-len(args):] == list(args)
+
+
+class TableMixin(object):
+    def visit_table(self, attrs):
+        self.__table = prettytable.PrettyTable(hrules=prettytable.ALL)
+
+    def depart_table(self):
+        self.content.append('\n\n')
+        self.content.append(str(self.__table))
+
+    def depart_th(self):
+        heading = self.content.pop().strip()
+        self.__table.field_names.append(heading)
+        self.__table.align[heading] = 'l'
+        self.__table.valign[heading] = 'l'
+        self.__table.max_width[heading] = 80
+
+    def visit_tr(self, attrs):
+        self.__row = []
+
+    def visit_td(self, attrs):
+        self.content_stack.append([])
+
+    def depart_td(self):
+        self.__row.append(''.join(self.content_stack.pop()).strip())
+
+    def depart_tr(self):
+        if self.__row:
+            columns = len(self.__table.field_names)
+            self.__row.extend(['' for n in range(columns - len(self.__row))])
+            self.__table.add_row(self.__row)
+
+
+class ParaParser(SubParser, TableMixin):
 
     EMPHASIS = {
         'bold': '**',
@@ -128,8 +171,15 @@ class ParaParser(SubParser):
 
     def __init__(self, parent):
         super(ParaParser, self).__init__(parent)
-        self.content = []
+        self.content_stack = [[]]
         self.current_emphasis = None
+        self.nesting = 0
+        self.fill_width = 67
+        self.wrapper = textwrap.TextWrapper(width=self.fill_width)
+
+    @property
+    def content(self):
+        return self.content_stack[-1]
 
     def startElement(self, name, _attrs):
         super(ParaParser, self).startElement(name, _attrs)
@@ -145,13 +195,79 @@ class ParaParser(SubParser):
         if fn:
             fn()
 
-    def visit_listitem(self, attrs):
-        self.content.append('\n- ')
+    def characters(self, content):
+        if not content:
+            return
+        # Fold up any white space into a single char
+        content = WHITESPACE_RE.sub(' ', content)
+        if content == ' ':
+            return
+        if content[0] == '\n':
+            return
+        if self.content:
+            if self.content[-1].endswith('\n'):
+                content = ' ' * self.nesting + content.strip()
+            elif self.content[-1].endswith(' '):
+                content = content.strip()
+            elif (not self.on_top_tag_stack('emphasis')
+                  and not self.on_top_tag_stack('code')):
+                content = ' ' + content.strip()
+            else:
+                content = content.strip()
 
-    def depart_para(self):
+        self.content.append(content)
+
+    def visit_listitem(self, attrs):
+        self.nesting = len([tag for tag in self.tag_stack
+                            if tag == 'listitem']) - 1
+        self.content_stack.append([' ' * self.nesting + '-'])
+        self.wrapper = textwrap.TextWrapper(
+            width=self.fill_width,
+            initial_indent=' ',
+            subsequent_indent=' ' * self.nesting + '  ',)
+
+    def depart_listitem(self):
+        content = self.content_stack.pop()
+        self.content.append(''.join(content))
         self.content.append('\n')
 
+        self.nesting = len([tag for tag in self.tag_stack
+                            if tag == 'listitem'])
+
+    def depart_itemizedlist(self):
+        if self.search_stack_for('itemizedlist') is None:
+            self.wrapper = textwrap.TextWrapper(width=self.fill_width)
+
+    def depart_orderedlist(self):
+        if self.search_stack_for('itemizedlist') is None:
+            self.wrapper = textwrap.TextWrapper(width=self.fill_width)
+
+    def visit_para(self, attrs):
+        self.content_stack.append([''])
+        if self.search_stack_for('itemizedlist') is not None:
+            return
+        if self.content:
+            if self.content[-1].endswith('\n\n'):
+                pass
+            elif self.content[-1].endswith('\n'):
+                self.content.append('\n')
+
+    def depart_para(self):
+        content = ''.join(self.content_stack.pop()).strip()
+        wrapped = self.wrapper.wrap(content)
+        self.content.append('\n'.join(wrapped))
+        if self.search_stack_for('itemizedlist') is None:
+            self.content.append('\n\n')
+        else:
+            self.content.append('\n')
+            self.wrapper = textwrap.TextWrapper(
+                width=self.fill_width,
+                initial_indent=' ' * self.nesting + '  ',
+                subsequent_indent=' ' * self.nesting + '  ',)
+
     def visit_code(self, attrs):
+        if not self.content[-1].endswith(' '):
+            self.content.append(' ')
         self.content.append('``')
 
     def depart_code(self):
@@ -160,20 +276,13 @@ class ParaParser(SubParser):
     def visit_emphasis(self, attrs):
         # Bold is the default emphasis
         self.current_emphasis = attrs.get('role', 'bold')
+        if not self.content[-1].endswith(' '):
+            self.content.append(' ')
         self.content.append(self.EMPHASIS[self.current_emphasis])
 
     def depart_emphasis(self):
         self.content.append(self.EMPHASIS[self.current_emphasis])
         self.current_emphasis = None
-
-    def characters(self, content):
-        if not content:
-            return
-        if content[0] == '\n':
-            return
-        if content[0] == ' ':
-            content = ' ' + content.lstrip()
-        self.content.append(content)
 
 
 class WADLHandler(xml.sax.ContentHandler):

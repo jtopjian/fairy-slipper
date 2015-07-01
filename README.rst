@@ -22,7 +22,10 @@ Directory Structure (Future)
 api-doc/ -- the root of the documentation
 api-doc/index.json  -- the index file that lists all the files that are included in the API doc.
 api-doc/<service>/<version>.rst
-api-doc/<service>/<version>-schemas/.json
+api-doc/<service>/<version>/<request_schema>.json
+api-doc/<service>/<version>/<response_schema>_<status_code>.json
+api-doc/<service>/<version>/examples/<request>_req.json
+api-doc/<service>/<version>/examples/<response>_resp_<status_code>.json
 
 
 Other Swagger UIs
@@ -43,8 +46,18 @@ Taken from https://github.com/swagger-api/swagger-spec/wiki/Sites-and-Services
 - http://developer.wordnik.com/docs.html
 - https://api.sensr.net/doc/v3/index.html
 
+Other API documentation Tools
+-----------------------------
+
+- https://github.com/danielgtaylor/aglio
 
 Alternative Clients
 -------------------
 
 - https://github.com/Orange-OpenSource/angular-swagger-ui
+
+
+Other Useful Tools
+------------------
+
+- http://jsonschema.net/

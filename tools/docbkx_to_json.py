@@ -2,13 +2,14 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import json
+import logging
 import os
 import re
-from os import path
 import xml.sax
-import logging
-from copy import copy
-import json
+from os import path
+
+import prettytable
 
 log = logging.getLogger(__file__)
 
@@ -247,9 +248,41 @@ SECTIONS = {u'API_Versions': u'api-versions',
 
 
 VERSION_RE = re.compile('v[0-9\.]+')
+WHITESPACE_RE = re.compile('[\s]+', re.MULTILINE)
 
 
-class APIChapterContentHandler(xml.sax.ContentHandler):
+class TableMixin(object):
+    def visit_table(self, attrs):
+        self.__table = prettytable.PrettyTable(hrules=prettytable.ALL)
+
+    def depart_table(self):
+        self.content.append('\n\n')
+        self.content.append(str(self.__table))
+
+    def depart_th(self):
+        heading = self.content.pop().strip()
+        self.__table.field_names.append(heading)
+        self.__table.align[heading] = 'l'
+        self.__table.valign[heading] = 'l'
+        self.__table.max_width[heading] = 80
+
+    def visit_tr(self, attrs):
+        self.__row = []
+
+    def visit_td(self, attrs):
+        self.old_content = self.content
+        self.content = []
+
+    def depart_td(self):
+        self.__row.append(''.join(self.content).strip())
+        self.content = self.old_content
+
+    def depart_tr(self):
+        if self.__row:
+            self.__table.add_row(self.__row)
+
+
+class APIChapterContentHandler(xml.sax.ContentHandler, TableMixin):
 
     EMPHASIS = {
         'bold': '**',
@@ -261,6 +294,7 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
         self.api_parser = api_parser
 
     def startDocument(self):
+        super(APIChapterContentHandler, self).startDocument()
         self.tags = {}
         self.current_tag = None
 
@@ -269,6 +303,7 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
         self.attr_stack = []
         self.content = []
         self.current_emphasis = None
+        self.nesting = 0
 
     def search_stack_for(self, tag_name):
         for tag, attrs in zip(reversed(self.tag_stack),
@@ -343,19 +378,53 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
     def characters(self, content):
         if not content:
             return
+        # Fold up any white space into a single char
+        content = WHITESPACE_RE.sub(' ', content)
+        if content == ' ':
+            return
         if content[0] == '\n':
             return
-        if content[0] == ' ':
-            content = ' ' + content.lstrip()
+        if self.content:
+            if self.content[-1].endswith('\n'):
+                content = ' ' * self.nesting + content.strip()
+            elif self.content[-1].endswith(' '):
+                content = content.strip()
+            elif (not self.on_top_tag_stack('emphasis')
+                  and not self.on_top_tag_stack('code')):
+                content = ' ' + content.strip()
+            else:
+                content = content.strip()
+
         self.content.append(content)
 
     def visit_listitem(self, attrs):
-        self.content.append('\n- ')
+        self.nesting = len([tag for tag in self.tag_stack
+                            if tag == 'listitem']) - 1
+        self.content.append('\n' + ' ' * self.nesting + '- ')
 
-    def depart_para(self):
+    def depart_listitem(self):
+        self.nesting = len([tag for tag in self.tag_stack
+                            if tag == 'listitem'])
+
+    def depart_itemizedlist(self):
         self.content.append('\n')
 
+    def depart_para(self):
+        if self.search_stack_for('itemizedlist') is None:
+            self.content.append('\n')
+
+    def visit_para(self, attrs):
+        if self.search_stack_for('itemizedlist') is not None:
+            return
+        if self.content:
+            if self.content[-1].endswith('\n\n'):
+                pass
+            elif self.content[-1].endswith('\n'):
+                self.content.append('\n')
+
     def visit_code(self, attrs):
+        if not self.content[-1].endswith(' '):
+            self.content.append(' ')
         self.content.append('``')
 
     def depart_code(self):
@@ -364,6 +433,8 @@ class APIChapterContentHandler(xml.sax.ContentHandler):
     def visit_emphasis(self, attrs):
         # Bold is the default emphasis
         self.current_emphasis = attrs.get('role', 'bold')
+        if not self.content[-1].endswith(' '):
+            self.content.append(' ')
         self.content.append(self.EMPHASIS[self.current_emphasis])
 
     def depart_emphasis(self):

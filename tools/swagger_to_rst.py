@@ -4,11 +4,12 @@ from __future__ import unicode_literals
 
 import re
 import os
-from os import path
 import logging
 import json
 import codecs
 import textwrap
+from urlparse import urljoin
+from os import path
 
 from jinja2 import Environment
 
@@ -18,14 +19,13 @@ TMPL_API = """
 {%- for path, requests in swagger['paths'].items() -%}
 {%- for request in requests -%}
 
-{{request.summary}}
-{{ "=" * request.summary|length }}
-
 .. http:{{request.method}}:: {{path}}
 {% for line in request.description.split('\n') %}
    {{line}}
 {%- endfor %}
-{% if request['examples']['application/json'] %}
+
+   :swagger-summary: {{request.summary}}
+{%- if request['examples']['application/json'] %}
    :swagger-request: {{version}}/examples/{{request['id']}}_req.json
 {%- endif -%}
 {% for status_code, response in request.responses.items() -%}
@@ -58,13 +58,12 @@ TMPL_API = """
 
 TMPL_TAG = """
 {%- for tag in swagger.tags -%}
-{{tag.description}}
-{{ "=" * tag.description|length }}
 
 .. swagger:tag:: {{tag.name}}
 {% for line in tag.summary.split('\n') %}
    {{line}}
 {%- endfor %}
+   :swagger-summary: {{tag.description}}
 
 {% endfor %}
 """
@@ -88,6 +87,24 @@ def main(filename, output_dir):
     write_rst(swagger, output_dir)
     write_jsonschema(swagger, output_dir)
     write_examples(swagger, output_dir)
+    write_index(swagger, output_dir)
+
+
+def write_index(swagger, output_dir):
+    info = swagger['info']
+    version = info['version']
+    service = info['service']
+    output_file = 'index.json'
+    filepath = path.join(output_dir, output_file)
+    log.info("Writing APIs %s", filepath)
+    if path.exists(filepath):
+        index = json.load(open(filepath))
+    else:
+        index = {}
+    index['/'.join([service, version, ''])] = info
+    with codecs.open(filepath,
+                     'w', "utf-8") as out_file:
+        json.dump(index, out_file, indent=2)
 
 
 def write_rst(swagger, output_dir):

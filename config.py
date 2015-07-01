@@ -10,6 +10,7 @@ app = {
     'modules': ['fairy_slipper'],
     'static_root': '%(confdir)s/public',
     'template_path': '%(confdir)s/fairy_slipper/templates',
+    'api_doc': '%(confdir)s/api_doc',
     'debug': True,
     'errors': {
         404: '/error/404',

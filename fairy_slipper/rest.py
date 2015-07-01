@@ -1,4 +1,4 @@
-# Copyright (c) 2015 Aptira
+# Copyright (c) 2015 Russell Sim <russell.sim@gmail.com>
 #
 # All Rights Reserved.
 #

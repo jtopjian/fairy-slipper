@@ -32,15 +32,21 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.node_stack.append(self.output)
         self.current_node_name = None
 
+    def search_stack_for(self, tag_name):
+        for node in self.node_stack:
+            # Skip any list elements, this is a hack, but it' works
+            # for now.
+            if isinstance(node, (list, str, unicode)):
+                continue
+            if tag_name in node.keys():
+                return node
+
     def default_visit(self, node):
         """Default node visit method."""
         self.current_node_name = node.__class__.__name__
         if hasattr(node, 'children') and node.children:
             new_node = {}
-            try:
-                self.node_stack[-1][self.current_node_name] = new_node
-            except:
-                import pdb; pdb.set_trace()  # FIXME
+            self.node_stack[-1][self.current_node_name] = new_node
             self.node_stack.append(new_node)
 
     def default_departure(self, node):
@@ -48,6 +54,9 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.node_stack.pop()
 
     def visit_Text(self, node):
+        # Skip if in a field, it will have special parsing.
+        if self.search_stack_for('field_list'):
+            return
         if isinstance(self.node_stack[-1], list):
             self.node_stack[-1].append(node.astext())
         else:
@@ -109,13 +118,13 @@ class JSONTranslator(nodes.GenericNodeVisitor):
             self.node_stack.pop()
 
     def visit_field_name(self, node):
-        self.node_stack[-1]['name'] = node.rawsource
+        self.node_stack[-1]['name'] = node.astext()
 
     def depart_field_name(self, node):
         pass
 
     def visit_field_body(self, node):
-        self.node_stack[-1]['type'] = node.rawsource
+        self.node_stack[-1]['type'] = node.astext()
 
     def depart_field_body(self, node):
         pass
@@ -124,11 +133,10 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         new_node = {}
         self.node_stack[-1].append(new_node)
         self.node_stack.append(new_node)
-
-        self.node_stack[-1]['name'] = node.attributes['names'][0]
+        self.node_stack[-1]['field'] = node.attributes['names'][0]
 
     def visit_field_type(self, node):
-        self.node_stack[-1]['type'] = node.rawsource
+        self.node_stack[-1]['type'] = node.astext()
 
     def depart_field_type(self, node):
         pass
@@ -194,7 +202,7 @@ class Field(object):
 
     @classmethod
     def transform(cls, node):
-        raise NotImplemented()
+        node.attributes['names'].append(node[0].astext())
 
 
 class TypedField(Field):
@@ -213,15 +221,17 @@ class TypedField(Field):
     @classmethod
     def transform(cls, node):
         split = node[0].rawsource.split(None, 2)
+        type = None
         if len(split) == 3:
             name, type, value = split
         elif len(split) == 2:
-            name, type, value = split
+            name, value = split
         else:
             raise Exception('Too Few arguments.')
         node.attributes['names'].append(name)
-        node.insert(1, field_type(type))
-        node[0].replace_self(nodes.field_name(value))
+        if type:
+            node.insert(1, field_type(type))
+        node[0].replace_self(nodes.field_name(value, value))
 
 
 class GroupedField(Field):
@@ -230,10 +240,12 @@ class GroupedField(Field):
     def transform(cls, node):
         name, value = node[0].rawsource.split(None, 1)
         node.attributes['names'].append(name)
-        node[0].replace_self(nodes.field_name(value))
+        node[0].replace_self(nodes.field_name(value, value))
 
 
-class Endpoint(Directive):
+class Resource(Directive):
+
+    method = None
 
     required_arguments = 0
     optional_arguments = 0
@@ -275,8 +287,27 @@ class Endpoint(Directive):
                      names=('>header', 'resheader', 'responseheader')),
         GroupedField('statuscode', label='Status Codes',
                      rolename='statuscode',
-                     names=('statuscode', 'status', 'code'))
+                     names=('statuscode', 'status', 'code')),
+
+        # Swagger Extensions
+        GroupedField('responseexample', label='Response Example',
+                     rolename='responseexample',
+                     names=('swagger-response', 'responseexample')),
+        Field('requestexample', label='Request Example',
+              rolename='requestexample',
+              names=('swagger-request', 'requestexample')),
+        Field('requestschema', label='Request Schema',
+              rolename='requestschema',
+              names=('swagger-schema', 'requestschema')),
+        Field('tag',
+              label='Swagger Tag',
+              rolename='tag',
+              names=('swagger-tag', 'tag'))
     ]
+
+    option_spec = {
+        'synopsis': lambda x: x,
+    }
 
     def transform_fields(self):
         return {name: f
@@ -295,4 +326,46 @@ class Endpoint(Directive):
                     fields[name].transform(field)
         return [node]
 
-directives.register_directive('endpoint', Endpoint)
+
+class HTTPGet(Resource):
+
+    method = 'get'
+
+
+class HTTPPost(Resource):
+
+    method = 'post'
+
+
+class HTTPPut(Resource):
+
+    method = 'put'
+
+
+class HTTPPatch(Resource):
+
+    method = 'patch'
+
+
+class HTTPOptions(Resource):
+
+    method = 'options'
+
+
+class HTTPHead(Resource):
+
+    method = 'head'
+
+
+class HTTPDelete(Resource):
+
+    method = 'delete'
+
+
+directives.register_directive('http:get', HTTPGet)
+directives.register_directive('http:post', HTTPPost)
+directives.register_directive('http:put', HTTPPut)
+directives.register_directive('http:patch', HTTPPatch)
+directives.register_directive('http:options', HTTPOptions)
+directives.register_directive('http:head', HTTPHead)
+directives.register_directive('http:delete', HTTPDelete)

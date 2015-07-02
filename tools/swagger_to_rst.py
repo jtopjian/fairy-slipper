@@ -20,26 +20,25 @@ TMPL_API = """
 {%- for request in requests -%}
 
 .. http:{{request.method}}:: {{path}}
+   :synopsis: {{request.summary}}
 {% for line in request.description.split('\n') %}
    {{line}}
 {%- endfor %}
-
-   :swagger-summary: {{request.summary}}
-{%- if request['examples']['application/json'] %}
-   :swagger-request: {{version}}/examples/{{request['id']}}_req.json
+{% if request['examples']['application/json'] %}
+   :requestexample: {{version}}/examples/{{request['id']}}_req.json
 {%- endif -%}
 {% for status_code, response in request.responses.items() -%}
 {%- if response['examples']['application/json'] %}
-   :swagger-response {{status_code}}: {{version}}/examples/{{request['id']}}_resp_{{status_code}}.json
+   :responseexample {{status_code}}: {{version}}/examples/{{request['id']}}_resp_{{status_code}}.json
 {%- endif -%}
 {% endfor -%}
 {% for tag in request.tags %}
-   :swagger-tag: {{tag}}
+   :tag: {{tag}}
 {%- endfor -%}
 {% for parameter in request.parameters -%}
 {% if parameter.in == 'body' -%}
 {% if parameter.schema %}
-   :swagger-schema: {{version}}/{{request['id']}}.json
+   :requestschema: {{version}}/{{request['id']}}.json
 {%- endif -%}
 {% elif parameter.in == 'path' %}
 {{ parameter|format_param('path') }}
@@ -48,7 +47,7 @@ TMPL_API = """
 {%- endif %}
 {%- endfor -%}
 {% for status_code, response in request.responses.items() %}
-   :response {{status_code}}: {{response.description}}
+   :statuscode {{status_code}}: {{response.description}}
 {%- endfor %}
 
 
@@ -60,10 +59,10 @@ TMPL_TAG = """
 {%- for tag in swagger.tags -%}
 
 .. swagger:tag:: {{tag.name}}
+   :summary: {{tag.description}}
 {% for line in tag.summary.split('\n') %}
    {{line}}
 {%- endfor %}
-   :swagger-summary: {{tag.description}}
 
 {% endfor %}
 """

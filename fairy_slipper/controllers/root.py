@@ -36,8 +36,9 @@ class DocController(object):
         json = docutils.core.publish_file(
             open(self.api_rst),
             writer=JSONWriter())
-        import pdb; pdb.set_trace()  # FIXME
-        return self.service_info
+
+        return {'info': self.service_info,
+                'paths': json['document']['paths']}
 
 
 class ServicesController(object):

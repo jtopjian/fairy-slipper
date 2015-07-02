@@ -17,11 +17,24 @@
 """
 
 """
+import logging
 
 from docutils import writers, nodes
 from docutils.writers import html4css1
 from docutils.parsers.rst import directives
 from docutils.parsers.rst import Directive
+
+logger = logging.getLogger(__name__)
+
+
+def search_node_parents(node, node_name):
+    parent = node
+    while parent.parent:
+        if parent.tagname == node_name:
+            return node
+        parent = parent.parent
+    if parent.tagname == node_name:
+        return node
 
 
 class JSONTranslator(nodes.GenericNodeVisitor):
@@ -55,7 +68,9 @@ class JSONTranslator(nodes.GenericNodeVisitor):
 
     def visit_Text(self, node):
         # Skip if in a field, it will have special parsing.
-        if self.search_stack_for('field_list'):
+        if self.search_stack_for('field_list') \
+           or search_node_parents(node, 'resource_url') \
+           or search_node_parents(node, 'resource_summary'):
             return
         if isinstance(self.node_stack[-1], list):
             self.node_stack[-1].append(node.astext())
@@ -123,6 +138,33 @@ class JSONTranslator(nodes.GenericNodeVisitor):
     def depart_field_name(self, node):
         pass
 
+    def visit_resource(self, node):
+        if 'paths' not in self.node_stack[-1]:
+            self.node_stack[-1]['paths'] = {}
+        self.node_stack.append(self.node_stack[-1]['paths'])
+
+    def depart_resource(self, node):
+        self.node_stack.pop()
+        self.node_stack.pop()
+
+    def visit_resource_url(self, node):
+        url_path = node.astext()
+        if url_path not in self.node_stack[-1]:
+            self.node_stack[-1][url_path] = []
+        new_node = {}
+        self.node_stack[-1][url_path].append(new_node)
+        self.node_stack.append(new_node)
+
+    def depart_resource_url(self, node):
+        pass
+
+    def visit_resource_summary(self, node):
+        summary = node.astext()
+        self.node_stack[-1]['summary'] = summary
+
+    def depart_resource_summary(self, node):
+        pass
+
     def visit_field_body(self, node):
         self.node_stack[-1]['type'] = node.astext()
 
@@ -188,6 +230,18 @@ class HTMLWriter(html4css1.Writer):
 
 
 class field_type(nodes.Part, nodes.TextElement):
+    pass
+
+
+class resource(nodes.Inline, nodes.TextElement):
+    pass
+
+
+class resource_url(nodes.Admonition, nodes.TextElement):
+    pass
+
+
+class resource_summary(nodes.Admonition, nodes.TextElement):
     pass
 
 
@@ -316,9 +370,18 @@ class Resource(Directive):
 
     def run(self):
         node = nodes.line_block()
-        node = nodes.inline()
+        node = resource()
         self.state.nested_parse(self.content, self.content_offset, node)
         fields = self.transform_fields()
+
+        if node[0].tagname == 'system_message':
+            logger.error(node[0].astext())
+            node.remove(node[0])
+        # This is the first line of the definition.
+        url = node[0].astext()
+        node[0].replace_self(resource_url(url, url))
+        summary = self.options.get('synopsis', '')
+        node.insert(1, resource_summary(summary, summary))
         for child in node:
             if isinstance(child, nodes.field_list):
                 for field in child:

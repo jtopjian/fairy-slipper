@@ -27,6 +27,13 @@ from docutils.parsers.rst import Directive
 logger = logging.getLogger(__name__)
 
 
+MIME_MAP = {
+    'json': 'application/json',
+    'txt': 'text/plain',
+    'xml': 'application/xml',
+}
+
+
 def search_node_parents(node, node_name):
     parent = node
     while parent.parent:
@@ -59,7 +66,10 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.current_node_name = node.__class__.__name__
         if hasattr(node, 'children') and node.children:
             new_node = {}
-            self.node_stack[-1][self.current_node_name] = new_node
+            try:
+                self.node_stack[-1][self.current_node_name] = new_node
+            except:
+                import pdb; pdb.set_trace()  # FIXME
             self.node_stack.append(new_node)
 
     def default_departure(self, node):
@@ -70,14 +80,25 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         # Skip if in a field, it will have special parsing.
         if self.search_stack_for('field_list') \
            or search_node_parents(node, 'resource_url') \
+           or search_node_parents(node, 'resource_method') \
            or search_node_parents(node, 'resource_summary'):
             return
         if isinstance(self.node_stack[-1], list):
             self.node_stack[-1].append(node.astext())
         else:
-            self.node_stack[-1] = node.astext()
+            self.node_stack[-1] += node.astext()
 
     def depart_Text(self, node):
+        pass
+
+    def visit_literal(self, node):
+        literal = '`%s` ' % node.astext()
+        if isinstance(self.node_stack[-1], list):
+            self.node_stack[-1].append(literal)
+        else:
+            self.node_stack[-1] += node.astext()
+
+    def depart_literal(self, node):
         pass
 
     def visit_title(self, node):
@@ -105,6 +126,13 @@ class JSONTranslator(nodes.GenericNodeVisitor):
     def depart_paragraph(self, node):
         if isinstance(self.node_stack[-1], list):
             self.node_stack.pop()
+        paragraph = ''.join(self.node_stack[-1]['paragraph'])
+        paragraph = paragraph.replace('\n', ' ')
+        print repr(paragraph)
+        del self.node_stack[-1]['paragraph']
+        self.node_stack[-1]['description'] = '\n\n'.join(
+            [self.node_stack[-1]['description'],
+             paragraph])
 
     def visit_line_block(self, node):
         if isinstance(self.node_stack[-1], list):
@@ -122,22 +150,6 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         if isinstance(self.node_stack[-1], list):
             self.node_stack.pop()
 
-    def visit_field_list(self, node):
-        self.current_node_name = node.__class__.__name__
-        new_node = []
-        self.node_stack[-1][self.current_node_name] = new_node
-        self.node_stack.append(new_node)
-
-    def depart_field_list(self, node):
-        if isinstance(self.node_stack[-1], list):
-            self.node_stack.pop()
-
-    def visit_field_name(self, node):
-        self.node_stack[-1]['name'] = node.astext()
-
-    def depart_field_name(self, node):
-        pass
-
     def visit_resource(self, node):
         if 'paths' not in self.node_stack[-1]:
             self.node_stack[-1]['paths'] = {}
@@ -151,7 +163,10 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         url_path = node.astext()
         if url_path not in self.node_stack[-1]:
             self.node_stack[-1][url_path] = []
-        new_node = {}
+        new_node = {'responses': {},
+                    'parameters': [],
+                    'description': '',
+                    'tags': []}
         self.node_stack[-1][url_path].append(new_node)
         self.node_stack.append(new_node)
 
@@ -161,8 +176,89 @@ class JSONTranslator(nodes.GenericNodeVisitor):
     def visit_resource_summary(self, node):
         summary = node.astext()
         self.node_stack[-1]['summary'] = summary
+        node.clear()
 
     def depart_resource_summary(self, node):
+        pass
+
+    def visit_resource_method(self, node):
+        method = node.astext()
+        self.node_stack[-1]['method'] = method
+        node.clear()
+
+    def depart_resource_method(self, node):
+        pass
+
+    def visit_field_list(self, node):
+        pass
+
+    def depart_field_list(self, node):
+        pass
+
+    def visit_field(self, node):
+        name = node.attributes['names'][0]
+        resource = self.node_stack[-1]
+        new_response = {'description': ''}
+        if name == 'statuscode':
+            responses = resource['responses']
+            status_code = node[0].astext()
+            description = node[1].astext()
+            if status_code not in responses:
+                responses[status_code] = new_response
+            responses[status_code]['description'] = description
+        elif name == 'responseexample':
+            responses = resource['responses']
+            status_code = node[0].astext()
+            filepath = node[1].astext()
+            if status_code not in responses:
+                responses[status_code] = new_response
+            ext = filepath.rsplit('.', 1)[1]
+            mimetype = MIME_MAP[ext]
+            if 'examples' not in responses[status_code]:
+                responses[status_code]['examples'] = {}
+            responses[status_code]['examples'][mimetype] = {'$ref': filepath}
+        elif name == 'requestexample':
+            status_code = node[0].astext()
+            filepath = node[1].astext()
+            ext = filepath.rsplit('.', 1)[1]
+            mimetype = MIME_MAP[ext]
+            if 'examples' not in resource:
+                resource['examples'] = {}
+            resource['examples'][mimetype] = {'$ref': filepath}
+        elif name == 'requestschema':
+            filepath = node[1].astext()
+            resource['parameters'].append(
+                {'name': 'body',
+                 'in': 'body',
+                 'required': True,
+                 'schema': {'$ref': filepath}})
+        elif name == 'parameter':
+            param_name = node[1].astext()
+            resource['parameters'].append(
+                {'name': param_name,
+                 'in': 'path',
+                 'type': 'string',
+                 'required': True})
+        elif name == 'query':
+            param_name = node[1].astext()
+            resource['parameters'].append(
+                {'name': param_name,
+                 'in': 'query',
+                 'type': 'string',
+                 'required': False})
+        elif name == 'tag':
+            tag = node[1].astext()
+            resource['tags'].append(tag)
+
+        node.clear()
+
+    def depart_field(self, node):
+        pass
+
+    def visit_field_name(self, node):
+        self.node_stack[-1]['name'] = node.astext()
+
+    def depart_field_name(self, node):
         pass
 
     def visit_field_body(self, node):
@@ -170,12 +266,6 @@ class JSONTranslator(nodes.GenericNodeVisitor):
 
     def depart_field_body(self, node):
         pass
-
-    def visit_field(self, node):
-        new_node = {}
-        self.node_stack[-1].append(new_node)
-        self.node_stack.append(new_node)
-        self.node_stack[-1]['field'] = node.attributes['names'][0]
 
     def visit_field_type(self, node):
         self.node_stack[-1]['type'] = node.astext()
@@ -209,26 +299,6 @@ class JSONWriter(writers.Writer):
         self.output = visitor.output
 
 
-class HTMLTranslator(html4css1.HTMLTranslator):
-    def visit_title(self, node):
-        self.body.append('<strong>')
-
-    def depart_title(self, node):
-        self.body.append('</strong>\n')
-
-    def visit_line_block(self, node):
-        self.body.append(self.starttag(node, 'div', CLASS='row'))
-
-    def depart_line_block(self, node):
-        self.body.append('</div>\n')
-
-
-class HTMLWriter(html4css1.Writer):
-    def __init__(self):
-        html4css1.Writer.__init__(self)
-        self.translator_class = HTMLTranslator
-
-
 class field_type(nodes.Part, nodes.TextElement):
     pass
 
@@ -242,6 +312,10 @@ class resource_url(nodes.Admonition, nodes.TextElement):
 
 
 class resource_summary(nodes.Admonition, nodes.TextElement):
+    pass
+
+
+class resource_method(nodes.Admonition, nodes.TextElement):
     pass
 
 
@@ -380,8 +454,15 @@ class Resource(Directive):
         # This is the first line of the definition.
         url = node[0].astext()
         node[0].replace_self(resource_url(url, url))
+
+        # Method
+        node.insert(1, resource_method(self.method, self.method))
+
+        # Summary
         summary = self.options.get('synopsis', '')
         node.insert(1, resource_summary(summary, summary))
+
+        # Generate field lists
         for child in node:
             if isinstance(child, nodes.field_list):
                 for field in child:

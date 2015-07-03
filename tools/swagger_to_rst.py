@@ -41,7 +41,7 @@ TMPL_API = """
    :requestschema: {{version}}/{{request['id']}}.json
 {%- endif -%}
 {% elif parameter.in == 'path' %}
-{{ parameter|format_param('path') }}
+{{ parameter|format_param('parameter') }}
 {%- elif parameter.in == 'query' %}
 {{ parameter|format_param('query') }}
 {%- endif %}
@@ -70,7 +70,7 @@ environment = Environment()
 
 
 def format_param(obj, type='query'):
-    param = '   :query %s: ' % obj['name']
+    param = '   :%s %s: ' % (type, obj['name'])
     param_wrap = textwrap.TextWrapper(
         initial_indent=param,
         subsequent_indent=' ' * len(param))

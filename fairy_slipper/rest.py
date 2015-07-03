@@ -51,6 +51,7 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.node_stack = []
         self.node_stack.append(self.output)
         self.current_node_name = None
+        self.bullet_stack = []
 
     def search_stack_for(self, tag_name):
         for node in self.node_stack:
@@ -86,7 +87,7 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         if isinstance(self.node_stack[-1], list):
             self.node_stack[-1].append(node.astext())
         else:
-            self.node_stack[-1] += node.astext()
+            self.node_stack[-1] += node.astext().replace('\n', ' ')
 
     def depart_Text(self, node):
         pass
@@ -99,6 +100,26 @@ class JSONTranslator(nodes.GenericNodeVisitor):
             self.node_stack[-1] += node.astext()
 
     def depart_literal(self, node):
+        pass
+
+    def visit_bullet_list(self, node):
+        self.bullet_stack.append('*')
+
+    def depart_bullet_list(self, node):
+        self.bullet_stack.pop()
+
+    def visit_list_item(self, node):
+        item = '\n%s%s ' % (' ' * len(self.bullet_stack),
+                            self.bullet_stack[-1])
+        if isinstance(self.node_stack[-1], list):
+            self.node_stack[-1].append(item)
+        else:
+            try:
+                self.node_stack[-1] += item
+            except:
+                import pdb; pdb.set_trace()  # FIXME
+
+    def depart_list_item(self, node):
         pass
 
     def visit_title(self, node):
@@ -127,8 +148,6 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         if isinstance(self.node_stack[-1], list):
             self.node_stack.pop()
         paragraph = ''.join(self.node_stack[-1]['paragraph'])
-        paragraph = paragraph.replace('\n', ' ')
-        print repr(paragraph)
         del self.node_stack[-1]['paragraph']
         self.node_stack[-1]['description'] = '\n\n'.join(
             [self.node_stack[-1]['description'],

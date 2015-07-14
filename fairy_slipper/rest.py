@@ -33,6 +33,11 @@ MIME_MAP = {
     'xml': 'application/xml',
 }
 
+STATUS_CODE_MAP = {
+    '400': 'Bad Request',
+    '404': 'Not Found',
+}
+
 
 def search_node_parents(node, node_name):
     parent = node
@@ -224,6 +229,8 @@ class JSONTranslator(nodes.GenericNodeVisitor):
             description = node[1].astext()
             if status_code not in responses:
                 responses[status_code] = new_response
+            if not description and status_code in STATUS_CODE_MAP:
+                description = STATUS_CODE_MAP[status_code]
             responses[status_code]['description'] = description
         elif name == 'responseexample':
             responses = resource['responses']

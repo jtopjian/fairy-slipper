@@ -529,8 +529,9 @@ class WADLHandler(xml.sax.ContentHandler):
                 log.warning("Can't find file %s" % pathname)
                 sample = None
 
-            self.current_api['produces'].add(media_type)
-            self.current_api['consumes'].add(media_type)
+            if media_type != 'text/plain':
+                self.current_api['produces'].add(media_type)
+                self.current_api['consumes'].add(media_type)
             if sample and type == 'response':
                 response = self.current_api['responses'][status_code]
                 response['examples'][media_type] = sample

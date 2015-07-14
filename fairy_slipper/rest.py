@@ -34,8 +34,28 @@ MIME_MAP = {
 }
 
 STATUS_CODE_MAP = {
+    '200': 'Success',
+    '201': 'Created',
+    '202': 'Accepted',
+    '203': 'Non-Authoritative Information',
+    '204': 'No Content',
+    '205': 'Reset Content',
+    '206': 'Partial Content',
+    '300': 'Multiple Choices',
+    '301': 'Moved Permanently',
+    '302': 'Found',
+    '303': 'See Other',
+    '304': 'Not Modified',
     '400': 'Bad Request',
+    '401': 'Unauthorized',
+    '403': 'Forbidden',
     '404': 'Not Found',
+    '405': 'Method Not Allowed',
+    '409': 'Conflict',
+    '410': 'Gone',
+    '413': 'Request Entity Too Large',
+    '415': 'Unsupported Media Type',
+    '503': 'Service Unavailable',
 }
 
 

@@ -77,6 +77,7 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.node_stack.append(self.output)
         self.current_node_name = None
         self.bullet_stack = []
+        self.text = ''
 
     def search_stack_for(self, tag_name):
         for node in self.node_stack:
@@ -103,26 +104,14 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.node_stack.pop()
 
     def visit_Text(self, node):
-        # Skip if in a field, it will have special parsing.
-        if self.search_stack_for('field_list') \
-           or search_node_parents(node, 'resource_url') \
-           or search_node_parents(node, 'resource_method') \
-           or search_node_parents(node, 'resource_summary'):
-            return
-        if isinstance(self.node_stack[-1], list):
-            self.node_stack[-1].append(node.astext())
-        else:
-            self.node_stack[-1] += node.astext().replace('\n', ' ')
+        self.text += node.astext()
 
     def depart_Text(self, node):
         pass
 
     def visit_literal(self, node):
         literal = '`%s` ' % node.astext()
-        if isinstance(self.node_stack[-1], list):
-            self.node_stack[-1].append(literal)
-        else:
-            self.node_stack[-1] += node.astext()
+        self.text += literal
 
     def depart_literal(self, node):
         pass
@@ -136,13 +125,7 @@ class JSONTranslator(nodes.GenericNodeVisitor):
     def visit_list_item(self, node):
         item = '\n%s%s ' % (' ' * len(self.bullet_stack),
                             self.bullet_stack[-1])
-        if isinstance(self.node_stack[-1], list):
-            self.node_stack[-1].append(item)
-        else:
-            try:
-                self.node_stack[-1] += item
-            except:
-                import pdb; pdb.set_trace()  # FIXME
+        self.text += item
 
     def depart_list_item(self, node):
         pass
@@ -158,25 +141,10 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         self.node_stack.pop()
 
     def visit_paragraph(self, node):
-        if isinstance(self.node_stack[-1], list):
-            return
-
-        self.current_node_name = node.__class__.__name__
-        if self.current_node_name not in self.node_stack[-1]:
-            new_node = []
-            self.node_stack[-1][self.current_node_name] = new_node
-            self.node_stack.append(new_node)
-        else:
-            self.node_stack.append(self.node_stack[-1][self.current_node_name])
+        pass
 
     def depart_paragraph(self, node):
-        if isinstance(self.node_stack[-1], list):
-            self.node_stack.pop()
-        paragraph = ''.join(self.node_stack[-1]['paragraph'])
-        del self.node_stack[-1]['paragraph']
-        self.node_stack[-1]['description'] = '\n\n'.join(
-            [self.node_stack[-1]['description'],
-             paragraph])
+        self.text += "\n\n"
 
     def visit_line_block(self, node):
         if isinstance(self.node_stack[-1], list):
@@ -195,16 +163,19 @@ class JSONTranslator(nodes.GenericNodeVisitor):
             self.node_stack.pop()
 
     def visit_resource(self, node):
+        self.text = ''
         if 'paths' not in self.node_stack[-1]:
             self.node_stack[-1]['paths'] = {}
         self.node_stack.append(self.node_stack[-1]['paths'])
 
     def depart_resource(self, node):
+        self.node_stack[-1]['description'] = self.text
         self.node_stack.pop()
         self.node_stack.pop()
 
     def visit_resource_url(self, node):
         url_path = node.astext()
+        node.clear()
         if url_path not in self.node_stack[-1]:
             self.node_stack[-1][url_path] = []
         new_node = {'responses': {},
@@ -489,7 +460,6 @@ class Resource(Directive):
                 for name in f.names}
 
     def run(self):
-        node = nodes.line_block()
         node = resource()
         self.state.nested_parse(self.content, self.content_offset, node)
         fields = self.transform_fields()

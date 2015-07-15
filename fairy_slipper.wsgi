@@ -1,5 +1,5 @@
 # -*- mode: python -*-
-import os
+from os import path
 from pecan.deploy import deploy
-pathname = os.path.join(os.path.abspath(os.dirname(__file__)), 'config.py')
+pathname = path.join(path.abspath(path.dirname(__file__)), 'config.py')
 application = deploy(pathname)

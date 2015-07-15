@@ -86,16 +86,16 @@ function install_api_site {
 }
 
 function migrate_docbkx {
-    if [ ! -d output_docbkx ]; then
-      mkdir output_docbkx
+    if [ ! -d conversion_files ]; then
+      mkdir conversion_files
     fi
-    if [ ! -d output ]; then
-      mkdir output
+    if [ ! -d api_doc ]; then
+      mkdir api_doc
     fi
 
-    ${wrapper} find api-site/api-ref/src/docbkx/ -name api-ref-\* -type f -exec ./tools/docbkx_to_json.py -o output_docbkx -v {} \;
-    ${wrapper} find output_docbkx -name api-ref\*json -type f -exec ./tools/wadl_to_swagger.py -o output_docbkx -v {} \;
-    ${wrapper} find output_docbkx -name \*-swagger.json -type f -exec ./tools/swagger_to_rst.py -o output -v {} \;
+    ${wrapper} find api-site/api-ref/src/docbkx/ -name api-ref-\* -type f -exec ./tools/docbkx_to_json.py -o conversion_files -v {} \;
+    ${wrapper} find conversion_files -name api-ref\*json -type f -exec ./tools/wadl_to_swagger.py -o conversion_files -v {} \;
+    ${wrapper} find conversion_files -name \*-swagger.json -type f -exec ./tools/swagger_to_rst.py -o api_doc -v {} \;
 }
 
 install_api_site

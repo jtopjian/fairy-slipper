@@ -226,6 +226,9 @@ if '__main__' == __name__:
         '-v', '--verbose', action='count', default=0,
         help="Increase verbosity (specify multiple times for more)")
     parser.add_argument(
+        '-o', '--output-dir', action='store',
+        help="The directory to output the JSON files too.")
+    parser.add_argument(
         'filename',
         help="File to convert")
 
@@ -243,5 +246,4 @@ if '__main__' == __name__:
 
     filename = path.abspath(args.filename)
 
-    current_dir = os.getcwd()
-    main(filename, output_dir=current_dir)
+    main(filename, output_dir=args.output_dir)

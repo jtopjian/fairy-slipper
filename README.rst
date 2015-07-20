@@ -55,6 +55,10 @@ Alternative Clients
 -------------------
 
 - https://github.com/Orange-OpenSource/angular-swagger-ui
+- https://github.com/apigee-127/swagger-client-API
+- https://github.com/signalfx/swagger-ajax-client/
+- https://github.com/signalfx/swagger-angular-client
+- https://github.com/signalfx/swagger-client-generator
 
 
 Other Useful Tools

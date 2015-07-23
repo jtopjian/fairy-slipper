@@ -32,6 +32,12 @@ TMPL_API = """
    :responseexample {{status_code}}: {{version}}/examples/{{request['id']}}_resp_{{status_code}}.json
 {%- endif -%}
 {% endfor -%}
+{% for mime in request.consumes %}
+   :accepts: {{mime}}
+{%- endfor -%}
+{% for mime in request.produces %}
+   :produces: {{mime}}
+{%- endfor -%}
 {% for tag in request.tags %}
    :tag: {{tag}}
 {%- endfor -%}

@@ -181,6 +181,8 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         new_node = {'responses': {},
                     'parameters': [],
                     'description': '',
+                    'produces': [],
+                    'consumes': [],
                     'tags': []}
         self.node_stack[-1][url_path].append(new_node)
         self.node_stack.append(new_node)
@@ -281,6 +283,15 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         elif name == 'tag':
             tag = node[1].astext()
             resource['tags'].append(tag)
+        elif name == 'accepts':
+            mimetype = node[1].astext()
+            print(mimetype)
+            resource['consumes'].append(mimetype)
+        elif name == 'produces':
+            mimetype = node[1].astext()
+            print(mimetype)
+            resource['produces'].append(mimetype)
+        print(name)
         node.clear()
 
     def depart_field(self, node):
@@ -461,7 +472,15 @@ class Resource(Directive):
         Field('tag',
               label='Swagger Tag',
               rolename='tag',
-              names=('swagger-tag', 'tag'))
+              names=('swagger-tag', 'tag')),
+        Field('accepts',
+              label='Swagger Consumes',
+              rolename='accepts',
+              names=('swagger-accepts', 'accepts')),
+        Field('produces',
+              label='Swagger Consumes',
+              rolename='produces',
+              names=('swagger-produces', 'produces'))
     ]
 
     option_spec = {

@@ -553,7 +553,7 @@ def main(source_file, output_dir):
         'resource_tags': ch.resource_tags,
     }
     pathname = 'api-ref-%s-%s.json' % (ch.service,
-                               ch.version)
+                                       ch.version)
     with open(pathname, 'w') as out_file:
         json.dump(output, out_file, indent=2, sort_keys=True)
 

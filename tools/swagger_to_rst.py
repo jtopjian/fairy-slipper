@@ -44,6 +44,8 @@ TMPL_API = """
 {{ parameter|format_param('parameter') }}
 {%- elif parameter.in == 'query' %}
 {{ parameter|format_param('query') }}
+{%- elif parameter.in == 'header' %}
+{{ parameter|format_param('reqheader') }}
 {%- endif %}
 {%- endfor -%}
 {% for status_code, response in request.responses.items() %}

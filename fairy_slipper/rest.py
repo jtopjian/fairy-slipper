@@ -214,6 +214,8 @@ class JSONTranslator(nodes.GenericNodeVisitor):
         name = node.attributes['names'][0]
         resource = self.node_stack[-1]
         new_response = {'description': ''}
+        # TODO this name matching ignores all the other possible names
+        # that the fields could have.
         if name == 'statuscode':
             responses = resource['responses']
             status_code = node[0].astext()
@@ -250,23 +252,35 @@ class JSONTranslator(nodes.GenericNodeVisitor):
                  'required': True,
                  'schema': {'$ref': filepath}})
         elif name == 'parameter':
-            param_name = node[1].astext()
+            param_name = node[0].astext()
+            description = node[1].astext()
             resource['parameters'].append(
                 {'name': param_name,
+                 'description': description,
                  'in': 'path',
                  'type': 'string',
                  'required': True})
         elif name == 'query':
-            param_name = node[1].astext()
+            param_name = node[0].astext()
+            description = node[1].astext()
             resource['parameters'].append(
                 {'name': param_name,
+                 'description': description,
                  'in': 'query',
+                 'type': 'string',
+                 'required': False})
+        elif name == 'reqheader':
+            param_name = node[0].astext()
+            description = node[1].astext()
+            resource['parameters'].append(
+                {'name': param_name,
+                 'description': description,
+                 'in': 'header',
                  'type': 'string',
                  'required': False})
         elif name == 'tag':
             tag = node[1].astext()
             resource['tags'].append(tag)
-
         node.clear()
 
     def depart_field(self, node):

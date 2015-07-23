@@ -3,10 +3,10 @@ import logging
 import itertools
 from os import path
 
-from pecan import expose
-from pecan.core import redirect
+from pecan import expose, response
 from pecan import conf
 from webob.exc import status_map
+from webob.static import FileIter
 import docutils.core
 
 from fairy_slipper.rest import JSONWriter
@@ -14,6 +14,24 @@ from fairy_slipper import hooks
 
 
 logger = logging.getLogger(__name__)
+
+
+class JSONFileController(object):
+
+    __hooks__ = [hooks.CORSHook()]
+
+    def __init__(self, filepath):
+        self.filepath = filepath
+
+    @expose(content_type='text/plain')
+    def _default(self):
+        if path.exists(self.filepath + '.json'):
+            self.filepath = self.filepath + '.json'
+        if not path.exists(self.filepath):
+            response.status = 404
+            return
+        f = open(self.filepath, 'rb')
+        response.app_iter = FileIter(f)
 
 
 class DocController(object):
@@ -25,6 +43,7 @@ class DocController(object):
         base_filepath = path.join(conf.app.api_doc, service_path.rstrip('/'))
         self.api_rst = base_filepath + '.rst'
         self.tags_rst = base_filepath + '-tags.rst'
+        self.examples_dir = path.join(base_filepath, 'examples') + path.sep
         if not path.exists(self.api_rst):
             logger.warning("Can't find ReST API doc at %s", self.api_rst)
         if not path.exists(self.tags_rst):
@@ -38,6 +57,18 @@ class DocController(object):
 
         return {'info': self.service_info,
                 'paths': json['document']['paths']}
+
+    @expose('json')
+    def _lookup(self, *components):
+        if len(components) != 2 and len(components) != 3:
+            return
+
+        if components[0] != 'examples':
+            return
+
+        example = components[1]
+        filepath = path.join(self.examples_dir, example)
+        return JSONFileController(filepath), ['']
 
 
 class ServicesController(object):
@@ -76,13 +107,11 @@ class ServicesController(object):
 
 class RootController(object):
 
-    @expose(generic=True, template='index.html')
+    @expose(content_type='text/html')
     def index(self):
-        return dict()
-
-    @index.when(method='POST')
-    def index_post(self, q):
-        redirect('http://pecan.readthedocs.org/en/latest/search.html?q=%s' % q)
+        filepath = path.join(conf.app.static_root, 'index.html')
+        f = open(filepath, 'rb')
+        response.app_iter = FileIter(f)
 
     @expose('error.html')
     def error(self, status):

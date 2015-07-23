@@ -285,13 +285,11 @@ class JSONTranslator(nodes.GenericNodeVisitor):
             resource['tags'].append(tag)
         elif name == 'accepts':
             mimetype = node[1].astext()
-            print(mimetype)
             resource['consumes'].append(mimetype)
         elif name == 'produces':
             mimetype = node[1].astext()
-            print(mimetype)
             resource['produces'].append(mimetype)
-        print(name)
+
         node.clear()
 
     def depart_field(self, node):

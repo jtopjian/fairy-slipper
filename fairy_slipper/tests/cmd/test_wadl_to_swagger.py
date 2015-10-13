@@ -481,25 +481,25 @@ class TestWADLHandler(unittest.TestCase):
         self.assertEqual(
             ch.apis,
             {'v2/':
-             [{'consumes': [],
-               'description': '',
-               'examples': {},
-               'id': 'createThing',
-               'method': 'post',
-               'parameters': [
-                   {'description': '',
-                    'in': 'body',
-                    'name': 'body',
-                    'required': False,
-                    'schema': {'$ref':
-                               '#/definitions/createThing'}}],
-               'produces': [],
-               'responses': {'202': {'examples': {},
-                                     'headers': {}}},
-               'summary': 'Creates and uses a port interface '
-               'to attach the port to a server instance.',
-               'tags': ['things'],
-               'title': 'Create interface'}]})
+              {'post':
+                {'consumes': [],
+                 'description': '',
+                 'examples': {},
+                 'operationId': 'createThing',
+                 'parameters': [
+                     {'description': '',
+                      'in': 'body',
+                      'name': 'body',
+                      'required': False,
+                      'schema': {'$ref':
+                                 '#/definitions/createThing'}}],
+                 'produces': [],
+                 'responses': {'202': {'examples': {},
+                                       'headers': {}}},
+                 'summary': 'Creates and uses a port interface '
+                 'to attach the port to a server instance.',
+                 'tags': ['things'],
+                 'title': 'Create interface'}}})
 
         self.assertEqual(
             ch.schemas,

@@ -524,8 +524,8 @@ class WADLHandler(xml.sax.ContentHandler):
         self.result_fn = result_fn
 
     def endDocument(self):
-        for api in self.apis.values():
-            for method in api:
+        for path, methods in self.apis.items():
+            for method_name, method in methods.items():
                 method['consumes'] = list(method['consumes'])
                 method['produces'] = list(method['produces'])
 
@@ -630,11 +630,10 @@ class WADLHandler(xml.sax.ContentHandler):
                 if url in self.apis:
                     root_api = self.apis[url]
                 else:
-                    self.apis[url] = root_api = []
+                    self.apis[url] = root_api = {}
                 self.current_api = {
-                    'id': id,
+                    'operationId': id,
                     'tags': set(),
-                    'method': name,
                     'produces': set(),
                     'consumes': set(),
                     'examples': {},
@@ -663,7 +662,10 @@ class WADLHandler(xml.sax.ContentHandler):
                 # If there are no tags then we couldn't find the
                 # method in the chapters.
                 if self.current_api['tags']:
-                    root_api.append(self.current_api)
+                    # There should only be one method per path
+                    if not name in root_api:
+                        root_api[name] = {}
+                    root_api[name] = self.current_api
                 else:
                     log.warning("No tags for method %s" % id)
 
@@ -866,14 +868,17 @@ def main1(source_file, output_dir):
                 "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
             }
         },
-        u'paths': defaultdict(list),
-        u'schemes': {},
+        u'paths': {},
+        u'schemes': [],
         u'tags': api_ref['tags'],
-        u'basePath': {},
+        u'basePath': "",
         u'securityDefinitions': {},
-        u'host': {},
+        u'host': "",
         u'definitions': {},
-        u'externalDocs': {},
+        u'externalDocs': {
+            'description': "OpenStack Docs",
+            'url': "http://docs.openstack.org",
+        },
         u"swagger": u"2.0",
     }
     for file in files:
@@ -881,8 +886,15 @@ def main1(source_file, output_dir):
         abs_filename = path.abspath(file)
         ch = WADLHandler(abs_filename, api_ref)
         xml.sax.parse(file, ch)
-        for urlpath, apis in ch.apis.items():
-            output['paths'][urlpath].extend(apis)
+        output['paths'] = ch.apis
+        for k, v in ch.schemas.items():
+            definition_required = []
+            for prop_name, properties in v['properties'].items():
+                if "required" in properties:
+                    if properties['required'] == True:
+                        definition_required.append(prop_name)
+                    del properties['required']
+            v.update({"required": definition_required})
         output['definitions'].update(ch.schemas)
 
     for ex_request, ex_response in examples:

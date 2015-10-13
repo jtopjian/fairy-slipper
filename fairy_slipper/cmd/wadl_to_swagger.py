@@ -524,7 +524,7 @@ class WADLHandler(xml.sax.ContentHandler):
         self.result_fn = result_fn
 
     def endDocument(self):
-        for path, methods in self.apis.items():
+        for urlpath, methods in self.apis.items():
             for method_name, method in methods.items():
                 method['consumes'] = list(method['consumes'])
                 method['produces'] = list(method['produces'])
@@ -663,7 +663,7 @@ class WADLHandler(xml.sax.ContentHandler):
                 # method in the chapters.
                 if self.current_api['tags']:
                     # There should only be one method per path
-                    if not name in root_api:
+                    if name not in root_api:
                         root_api[name] = {}
                     root_api[name] = self.current_api
                 else:
@@ -794,7 +794,7 @@ class WADLHandler(xml.sax.ContentHandler):
                     schema_name = schema_name + '_' + status_code
                     if schema_name not in self.schemas:
                         self.schemas[schema_name] = {'type': 'object',
-                                                    'properties': {}}
+                                                     'properties': {}}
                     schema_properties = self.schemas[schema_name]['properties']
                     schema_properties[parameter['name']] = parameter
                     del parameter['name']
@@ -891,7 +891,7 @@ def main1(source_file, output_dir):
             definition_required = []
             for prop_name, properties in v['properties'].items():
                 if "required" in properties:
-                    if properties['required'] == True:
+                    if properties['required'] is True:
                         definition_required.append(prop_name)
                     del properties['required']
             v.update({"required": definition_required})

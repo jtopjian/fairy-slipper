@@ -641,7 +641,7 @@ class WADLHandler(xml.sax.ContentHandler):
                 else:
                     self.apis[url] = root_api = []
                 self.current_api = {
-                    'id': id,
+                    'operationId': id,
                     'tags': set(),
                     'method': name,
                     'produces': set(),
@@ -802,7 +802,7 @@ class WADLHandler(xml.sax.ContentHandler):
                     schema_name = schema_name + '_' + status_code
                     if schema_name not in self.schemas:
                         self.schemas[schema_name] = {'type': 'object',
-                                                    'properties': {}}
+                                                     'properties': {}}
                     schema_properties = self.schemas[schema_name]['properties']
                     schema_properties[parameter['name']] = parameter
                     del parameter['name']
@@ -876,14 +876,17 @@ def main1(source_file, output_dir):
                 "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
             }
         },
-        u'paths': defaultdict(list),
-        u'schemes': {},
+        u'paths': {},
+        u'schemes': [],
         u'tags': api_ref['tags'],
-        u'basePath': {},
+        u'basePath': "",
         u'securityDefinitions': {},
-        u'host': {},
+        u'host': "",
         u'definitions': {},
-        u'externalDocs': {},
+        u'externalDocs': {
+            'description': 'OpenStack Docs',
+            'url': 'http://docs.openstack.org',
+        },
         u"swagger": u"2.0",
     }
     for file in files:
@@ -892,7 +895,49 @@ def main1(source_file, output_dir):
         ch = WADLHandler(abs_filename, api_ref)
         xml.sax.parse(file, ch)
         for urlpath, apis in ch.apis.items():
-            output['paths'][urlpath].extend(apis)
+            if urlpath not in output['paths']:
+                output['paths'][urlpath] = {}
+            for api in apis:
+                m = False
+                m = api.pop('method')
+                if m not in output['paths'][urlpath]:
+                    pcount = {}
+                    pdups = []
+                    for i, p in enumerate(api['parameters']):
+                        # Check for duplicate parameters
+                        pname = p['name']
+                        if pname in pcount:
+                            log.warning("Duplicate parameter found:"
+                                        " %s" % pname)
+                            pdups.append(i)
+                        else:
+                            pcount[pname] = 1
+
+                        # Check path parameter is really in path
+                        ppath = "{%s}" % pname
+                        if ppath not in urlpath and p['in'] == 'path':
+                            log.warning("Parameter not in path %s, "
+                                        "changing to query: %s"
+                                        % (urlpath, ppath))
+                            p['in'] = 'query'
+
+                    # Remove the duplicate parameters
+                    newparams = []
+                    for i, p in enumerate(api['parameters']):
+                        if i not in pdups:
+                            newparams.append(p)
+                    api['parameters'] = newparams
+                    output['paths'][urlpath][m] = {}
+                    output['paths'][urlpath][m] = api
+                output['paths'][urlpath]
+        for k, v in ch.schemas.items():
+            definition_required = []
+            for prop_name, properties in v['properties'].items():
+                if 'required' in properties:
+                    if properties['required'] is True:
+                        definition_required.append(prop_name)
+                    del properties['required']
+            v.update({'required': definition_required})
         output['definitions'].update(ch.schemas)
 
     for ex_request, ex_response in examples:
